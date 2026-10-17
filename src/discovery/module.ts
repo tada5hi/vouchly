@@ -13,11 +13,11 @@ type MetadataItem = {
 const items = new WeakMap<typeof fetch, Map<string, MetadataItem>>();
 const flights = new WeakMap<typeof fetch, Map<string, Promise<ProviderMetadata>>>();
 
-function scope<T>(store: WeakMap<typeof fetch, Map<string, T>>, fetch: typeof fetch) : Map<string, T> {
-    let map = store.get(fetch);
+function scope<T>(store: WeakMap<typeof fetch, Map<string, T>>, fetchFn: typeof globalThis.fetch) : Map<string, T> {
+    let map = store.get(fetchFn);
     if (!map) {
         map = new Map();
-        store.set(fetch, map);
+        store.set(fetchFn, map);
     }
 
     return map;
@@ -31,10 +31,10 @@ function isURL(input: unknown) : input is string {
     return typeof input === 'string' && URL.canParse(input);
 }
 
-async function load(issuer: string, fetch: typeof fetch) : Promise<ProviderMetadata> {
+async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<ProviderMetadata> {
     const url = `${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`;
 
-    const response = await fetch(url, {
+    const response = await fetchFn(url, {
         headers: { accept: 'application/json' },
         signal: AbortSignal.timeout(TIMEOUT),
     });
@@ -80,21 +80,21 @@ async function load(issuer: string, fetch: typeof fetch) : Promise<ProviderMetad
  */
 export async function fetchProviderMetadata(
     issuer: string,
-    fetch: typeof fetch,
+    fetchFn: typeof globalThis.fetch,
     options: DiscoveryOptions = {},
 ) : Promise<ProviderMetadata> {
     const cacheMaxAge = options.cacheMaxAge ?? CACHE_MAX_AGE;
 
-    const cached = scope(items, fetch);
+    const cached = scope(items, fetchFn);
     const item = cached.get(issuer);
     if (item && Date.now() - item.fetchedAt < cacheMaxAge * 1000) {
         return structuredClone(item.metadata);
     }
 
-    const pending = scope(flights, fetch);
+    const pending = scope(flights, fetchFn);
     let flight = pending.get(issuer);
     if (!flight) {
-        flight = load(issuer, fetch)
+        flight = load(issuer, fetchFn)
             .then((metadata) => {
                 cached.set(issuer, { metadata, fetchedAt: Date.now() });
                 return metadata;

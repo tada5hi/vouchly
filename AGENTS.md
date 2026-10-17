@@ -28,7 +28,7 @@ There is no `typecheck` script. `tsconfig.json` sets `noEmit: true` and is used 
 
 ## Layout at a Glance
 
-Single package, no workspaces. `src/` holds one folder per module (`cache/`, `discovery/`, `error/`, `issuer/`, `key/`, `token/`, `verifier/`), `test/unit/` holds one spec per module, `dist/` is generated and git-ignored.
+Single package, no workspaces. `src/` holds one folder per module (`cache/`, `discovery/`, `error/`, `introspection/`, `issuer/`, `key/`, `token/`, `verifier/`), `test/unit/` holds one spec per module, `dist/` is generated and git-ignored.
 
 ## Detailed Guides
 

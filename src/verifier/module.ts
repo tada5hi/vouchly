@@ -5,6 +5,7 @@ import { MemoryTokenCache, hashToken } from '../cache';
 import { VouchrError, VouchrErrorCode, isVouchrError } from '../error';
 import type { Issuer } from '../issuer';
 import { selectIssuer } from '../issuer';
+import { introspect } from '../introspection';
 import type { KeySource } from '../key';
 import { discovery, resolveVerificationKey } from '../key';
 import type { ParsedToken } from '../token';
@@ -80,6 +81,18 @@ function mapJoseError(e: unknown) : VouchrError {
     }
 
     return new VouchrError(VouchrErrorCode.SIGNATURE_INVALID, message, { cause: e });
+}
+
+function assertAudience(issuer: Issuer, claims: JWTPayload) : void {
+    if (typeof issuer.audience === 'undefined') {
+        return;
+    }
+
+    const expected = Array.isArray(issuer.audience) ? issuer.audience : [issuer.audience];
+    const actual = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+    if (actual.every((value) => typeof value !== 'string' || !expected.includes(value))) {
+        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token audience is not accepted.');
+    }
 }
 
 function buildRecords(options: VerifierOptions) : IssuerRecord[] {
@@ -250,16 +263,19 @@ export class Verifier implements IVerifier {
     }
 
     /**
-     * Verifies a token by RFC 7662 introspection and answers its claims.
+     * Verifies a token by RFC 7662 introspection and applies the issuer's
+     * audience and claims predicate to the response.
      */
     protected async verifyIntrospection(
-        _token: string,
+        token: string,
         record: IssuerRecord,
     ) : Promise<JWTPayload> {
-        throw new VouchrError(
-            VouchrErrorCode.INTROSPECTION_FAILED,
-            `The issuer "${record.name}" is verified by introspection, which is not available.`,
-        );
+        const claims = await introspect(token, record.issuer, this.fetch);
+
+        assertAudience(record.issuer, claims);
+        await this.assertClaimsPredicate(record.issuer, claims);
+
+        return claims;
     }
 
     protected async introspect(token: string, key: string, record: IssuerRecord, options: VerifyOptions) : Promise<VerifyResult> {
