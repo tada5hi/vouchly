@@ -9,6 +9,12 @@ export type VerifierOptions = {
      */
     cache?: ITokenCache | false,
     /**
+     * Separates this verifier's entries from other verifiers sharing the
+     * cache, default ''. The cache key is the SHA-256 of the namespace, a
+     * NUL character and the token.
+     */
+    cacheNamespace?: string,
+    /**
      * Default: the global fetch.
      */
     fetch?: typeof fetch,

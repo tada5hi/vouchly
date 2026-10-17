@@ -4,7 +4,7 @@ import type { ITokenCache, TokenCacheEntry } from '../cache';
 import { MemoryTokenCache, hashToken } from '../cache';
 import { VouchrError, VouchrErrorCode, isVouchrError } from '../error';
 import type { Issuer } from '../issuer';
-import { selectIssuer } from '../issuer';
+import { matchIssuer, selectIssuer } from '../issuer';
 import { introspect } from '../introspection';
 import type { KeySource } from '../key';
 import { discovery, resolveVerificationKey } from '../key';
@@ -95,6 +95,30 @@ function assertAudience(issuer: Issuer, claims: JWTPayload) : void {
     }
 }
 
+function normalizeTyp(value: string) : string {
+    const normalized = value.toLowerCase();
+    return value.includes('/') ? normalized : `application/${normalized}`;
+}
+
+/**
+ * The rules jose applies to the header and claims of a local token that do
+ * not need the signature, so a cache hit is held to them too.
+ */
+function assertLocalClaims(issuer: Issuer, entry: TokenCacheEntry) : void {
+    for (const claim of issuer.requiredClaims ?? ['exp']) {
+        if (!(claim in entry.claims)) {
+            throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, `The token has no "${claim}" claim.`);
+        }
+    }
+
+    if (
+        typeof issuer.typ === 'string' &&
+        (typeof entry.typ !== 'string' || normalizeTyp(entry.typ) !== normalizeTyp(issuer.typ))
+    ) {
+        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token typ is not accepted.');
+    }
+}
+
 function buildRecords(options: VerifierOptions) : IssuerRecord[] {
     if (!Array.isArray(options.issuers) || options.issuers.length === 0) {
         throw new TypeError('A verifier needs at least one issuer.');
@@ -142,6 +166,8 @@ export class Verifier implements IVerifier {
 
     protected opaque: IssuerRecord | undefined;
 
+    protected cacheNamespace: string;
+
     constructor(options: VerifierOptions) {
         this.records = buildRecords(options);
 
@@ -153,6 +179,7 @@ export class Verifier implements IVerifier {
         }
 
         this.cache = options.cache === false ? undefined : (options.cache ?? new MemoryTokenCache());
+        this.cacheNamespace = options.cacheNamespace ?? '';
 
         // One stable function per verifier: key sources memoise per fetch.
         const fetchFn = options.fetch;
@@ -165,9 +192,10 @@ export class Verifier implements IVerifier {
             throw new VouchrError(VouchrErrorCode.TOKEN_MALFORMED, 'The token is not a compact JWS.');
         }
 
-        const key = await hashToken(token);
+        const parsed = compact ? parseToken(token) : undefined;
+        const key = await hashToken(`${this.cacheNamespace}\u0000${token}`);
 
-        const cached = await this.readCache(key);
+        const cached = await this.readCache(key, parsed);
         if (cached) {
             await resolveCertificateBinding(cached.entry.claims, options);
 
@@ -182,25 +210,23 @@ export class Verifier implements IVerifier {
             return this.introspect(token, key, this.opaque!, options);
         }
 
-        const parsed = parseToken(token);
-
-        const index = selectIssuer(this.records.map((record) => record.issuer), parsed.claims);
-        if (index === -1) {
-            throw new VouchrError(VouchrErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
-        }
-
-        const record = this.records[index]!;
+        const record = this.selectRecord(parsed!);
         if (record.issuer.verification === 'introspection') {
             return this.introspect(token, key, record, options);
         }
 
-        const claims = await this.verifyLocal(parsed, record);
+        const claims = await this.verifyLocal(parsed!, record);
 
-        await this.writeCache(key, {
-            claims, 
-            issuer: record.name, 
-            source: 'local', 
-        }, claims.exp);
+        const entry : TokenCacheEntry = {
+            claims,
+            issuer: record.name,
+            source: 'local',
+        };
+        if (typeof parsed!.header.typ === 'string') {
+            entry.typ = parsed!.header.typ;
+        }
+
+        await this.writeCache(key, entry, claims.exp);
 
         await resolveCertificateBinding(claims, options);
 
@@ -209,6 +235,15 @@ export class Verifier implements IVerifier {
             issuer: record.issuer,
             source: 'local',
         };
+    }
+
+    protected selectRecord(token: ParsedToken) : IssuerRecord {
+        const index = selectIssuer(this.records.map((record) => record.issuer), token.claims);
+        if (index === -1) {
+            throw new VouchrError(VouchrErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
+        }
+
+        return this.records[index]!;
     }
 
     protected async verifyLocal(token: ParsedToken, record: IssuerRecord) : Promise<JWTPayload> {
@@ -302,9 +337,15 @@ export class Verifier implements IVerifier {
     }
 
     /**
-     * A cache failure is a miss: the token is verified again instead.
+     * A cache failure is a miss: the token is verified again instead. An entry
+     * is only served under the record an uncached verify would pick, and only
+     * after this verifier's own rules that need no signature passed on it:
+     * a verifier sharing the cache may have applied other ones.
      */
-    protected async readCache(key: string) : Promise<{ entry: TokenCacheEntry, record: IssuerRecord } | undefined> {
+    protected async readCache(
+        key: string,
+        token: ParsedToken | undefined,
+    ) : Promise<{ entry: TokenCacheEntry, record: IssuerRecord } | undefined> {
         if (!this.cache) {
             return undefined;
         }
@@ -320,10 +361,22 @@ export class Verifier implements IVerifier {
             return undefined;
         }
 
-        const record = this.records.find((item) => item.name === entry.issuer);
-        if (!record) {
+        const record = token ? this.selectRecord(token) : this.opaque!;
+        const source = record.issuer.verification ?? 'local';
+        if (entry.issuer !== record.name || entry.source !== source) {
             return undefined;
         }
+
+        if (source === 'local') {
+            if (!matchIssuer(record.issuer, entry.claims)) {
+                throw new VouchrError(VouchrErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
+            }
+
+            assertLocalClaims(record.issuer, entry);
+        }
+
+        assertAudience(record.issuer, entry.claims);
+        await this.assertClaimsPredicate(record.issuer, entry.claims);
 
         return { entry, record };
     }

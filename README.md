@@ -244,9 +244,11 @@ const verifier = createVerifier({
 });
 ```
 
-- The key is the hex SHA-256 of the token, so the token itself is never stored as a key.
+- The key is the hex SHA-256 of the verifier's `cacheNamespace` (default `''`), a NUL character and the token, so the token itself is never stored as a key.
 - `ttl` is in seconds and never runs past the token's `exp`. A local token without `exp` is not cached.
 - A cache that throws counts as a miss on `get` and is ignored on `set`; it never fails a verification.
+- A cache hit skips the signature check and the key lookup, nothing else. The entry is served only under the issuer this verifier would select for the token, and only after this verifier's own `audience`, `requiredClaims`, `typ`, `exp` and `claims` predicate passed on the cached claims; a rule that fails gives the same error code as an uncached verify.
+- Verifiers that share one cache read each other's entries. Give each one its own `cacheNamespace` when they trust different things: two verifiers whose issuers have no `id` are both named by index (`'0'`, `'1'`, ...), and an entry stores only that name. The checks above keep a shared entry from widening what a verifier accepts, but a namespace keeps the entries apart outright.
 
 ## Issuer options
 
@@ -264,7 +266,7 @@ const verifier = createVerifier({
 | `requiredClaims` | `string[]` | `['exp']` | Claims that must be present. |
 | `claims` | `(claims) => boolean \| Promise<boolean>` | | Your own rules over the verified claims. |
 
-The verifier itself takes `issuers`, `cache` (`ITokenCache` or `false`), `fetch` (defaults to the global `fetch`) and `opaque` (the `id` of the issuer that introspects non-JWT tokens). The constructor throws a `TypeError` for a configuration that cannot work: no issuers, a duplicate `id`, a function issuer verified locally without `keys`, or an `opaque` id that names no issuer.
+The verifier itself takes `issuers`, `cache` (`ITokenCache` or `false`), `cacheNamespace` (see [Caching](#caching)), `fetch` (defaults to the global `fetch`) and `opaque` (the `id` of the issuer that introspects non-JWT tokens). The constructor throws a `TypeError` for a configuration that cannot work: no issuers, a duplicate `id`, a function issuer verified locally without `keys`, or an `opaque` id that names no issuer.
 
 ## Errors
 

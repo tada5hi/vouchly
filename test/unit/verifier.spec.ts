@@ -310,6 +310,94 @@ describe('src/verifier', () => {
         expect(second.source).toBe('local');
     });
 
+    it('should not serve another audience from a shared cache', async () => {
+        const key = await createSigningKey('k1');
+        const cache = new MemoryTokenCache();
+        const a = createVerifier({
+            issuers: [{
+                id: 'main',
+                issuer: ISSUER,
+                keys: staticKeys([key.jwk]),
+                audience: 'service-a',
+            }],
+            cache,
+        });
+        const b = createVerifier({
+            issuers: [{
+                id: 'main',
+                issuer: ISSUER,
+                keys: staticKeys([key.jwk]),
+                audience: 'service-b',
+            }],
+            cache,
+        });
+        const token = await sign(key, { claims: { aud: 'service-a' } });
+
+        await a.verify(token);
+        await expectCode(b.verify(token), VouchrErrorCode.CLAIM_INVALID);
+    });
+
+    it('should not serve another issuer from a shared cache', async () => {
+        const key = await createSigningKey('k1');
+        const cache = new MemoryTokenCache();
+        const a = createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }], cache });
+        const b = createVerifier({ issuers: [{ issuer: 'https://other.example', keys: staticKeys([key.jwk]) }], cache });
+        const token = await sign(key);
+
+        await a.verify(token);
+        await expectCode(b.verify(token), VouchrErrorCode.ISSUER_UNTRUSTED);
+    });
+
+    it('should re-apply the typ, required claims and claims predicate on a cache hit', async () => {
+        const key = await createSigningKey('k1');
+        const cache = new MemoryTokenCache();
+        const base : Issuer = {
+            id: 'main',
+            issuer: ISSUER,
+            keys: staticKeys([key.jwk]),
+        };
+        const a = createVerifier({ issuers: [base], cache });
+        const token = await sign(key, { typ: 'JWT' });
+        await a.verify(token);
+
+        const typ = createVerifier({ issuers: [{ ...base, typ: 'at+jwt' }], cache });
+        await expectCode(typ.verify(token), VouchrErrorCode.CLAIM_INVALID);
+
+        const required = createVerifier({ issuers: [{ ...base, requiredClaims: ['exp', 'jti'] }], cache });
+        await expectCode(required.verify(token), VouchrErrorCode.CLAIM_INVALID);
+
+        const predicate = createVerifier({ issuers: [{ ...base, claims: () => false }], cache });
+        await expectCode(predicate.verify(token), VouchrErrorCode.CLAIM_INVALID);
+
+        const same = createVerifier({ issuers: [{ ...base, typ: 'jwt' }], cache });
+        expect((await same.verify(token)).claims.sub).toBe('user');
+    });
+
+    it('should keep namespaced verifiers apart in a shared cache', async () => {
+        const key = await createSigningKey('k1');
+        const cache = new MemoryTokenCache();
+        const keysA = countingKeys([key.jwk]);
+        const keysB = countingKeys([key.jwk]);
+        const a = createVerifier({
+            issuers: [{ issuer: ISSUER, keys: keysA.source }], 
+            cache, 
+            cacheNamespace: 'a', 
+        });
+        const b = createVerifier({
+            issuers: [{ issuer: ISSUER, keys: keysB.source }], 
+            cache, 
+            cacheNamespace: 'b', 
+        });
+        const token = await sign(key);
+
+        await a.verify(token);
+        await b.verify(token);
+        await b.verify(token);
+
+        expect(keysA.calls()).toBe(1);
+        expect(keysB.calls()).toBe(1);
+    });
+
     it('should refuse a padded variant before any key fetch or cache write', async () => {
         const key = await createSigningKey('k1');
         const keys = countingKeys([key.jwk]);
