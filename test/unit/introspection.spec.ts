@@ -337,6 +337,7 @@ describe('src/introspection', () => {
         const stub = createStub(activeResponse({ exp: 1_800_000_002 }));
         const memory = new MemoryTokenCache();
         const instance = verifier(stub, introspectionIssuer(), {
+            cacheNamespace: 'api',
             cache: {
                 get: (k) => memory.get(k),
                 set: (k, entry, ttl) => memory.set(k, entry, Math.ceil(ttl)),

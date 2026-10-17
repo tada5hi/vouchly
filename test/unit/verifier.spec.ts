@@ -320,6 +320,7 @@ describe('src/verifier', () => {
                 audience: 'service-a',
             }],
             cache,
+            cacheNamespace: 'shared',
         });
         const b = createVerifier({
             issuers: [{
@@ -329,6 +330,7 @@ describe('src/verifier', () => {
                 audience: 'service-b',
             }],
             cache,
+            cacheNamespace: 'shared',
         });
         const token = await sign(key, { claims: { aud: 'service-a' } });
 
@@ -339,8 +341,16 @@ describe('src/verifier', () => {
     it('should not serve another issuer from a shared cache', async () => {
         const key = await createSigningKey('k1');
         const cache = new MemoryTokenCache();
-        const a = createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }], cache });
-        const b = createVerifier({ issuers: [{ issuer: 'https://other.example', keys: staticKeys([key.jwk]) }], cache });
+        const a = createVerifier({
+            issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
+        const b = createVerifier({
+            issuers: [{ issuer: 'https://other.example', keys: staticKeys([key.jwk]) }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
         const token = await sign(key);
 
         await a.verify(token);
@@ -355,20 +365,40 @@ describe('src/verifier', () => {
             issuer: ISSUER,
             keys: staticKeys([key.jwk]),
         };
-        const a = createVerifier({ issuers: [base], cache });
+        const a = createVerifier({
+            issuers: [base], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
         const token = await sign(key, { typ: 'JWT' });
         await a.verify(token);
 
-        const typ = createVerifier({ issuers: [{ ...base, typ: 'at+jwt' }], cache });
+        const typ = createVerifier({
+            issuers: [{ ...base, typ: 'at+jwt' }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
         await expectCode(typ.verify(token), VouchrErrorCode.CLAIM_INVALID);
 
-        const required = createVerifier({ issuers: [{ ...base, requiredClaims: ['exp', 'jti'] }], cache });
+        const required = createVerifier({
+            issuers: [{ ...base, requiredClaims: ['exp', 'jti'] }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
         await expectCode(required.verify(token), VouchrErrorCode.CLAIM_INVALID);
 
-        const predicate = createVerifier({ issuers: [{ ...base, claims: () => false }], cache });
+        const predicate = createVerifier({
+            issuers: [{ ...base, claims: () => false }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
         await expectCode(predicate.verify(token), VouchrErrorCode.CLAIM_INVALID);
 
-        const same = createVerifier({ issuers: [{ ...base, typ: 'jwt' }], cache });
+        const same = createVerifier({
+            issuers: [{ ...base, typ: 'jwt' }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
         expect((await same.verify(token)).claims.sub).toBe('user');
     });
 
@@ -397,6 +427,81 @@ describe('src/verifier', () => {
         expect(keysB.calls()).toBe(1);
     });
 
+    it('should require a cacheNamespace for a cache passed in', () => {
+        const cache = new MemoryTokenCache();
+        const issuers : Issuer[] = [{ issuer: ISSUER, keys: staticKeys([]) }];
+
+        expect(() => createVerifier({ issuers, cache })).toThrow(TypeError);
+        expect(() => createVerifier({
+            issuers, 
+            cache, 
+            cacheNamespace: '', 
+        })).toThrow(TypeError);
+        expect(() => createVerifier({
+            issuers, 
+            cache, 
+            cacheNamespace: 'api', 
+        })).not.toThrow();
+        expect(() => createVerifier({ issuers })).not.toThrow();
+        expect(() => createVerifier({ issuers, cache: false })).not.toThrow();
+    });
+
+    it('should refuse a cacheNamespace containing NUL', () => {
+        expect(() => createVerifier({
+            issuers: [{ issuer: ISSUER, keys: staticKeys([]) }],
+            cache: new MemoryTokenCache(),
+            cacheNamespace: 'a\u0000x',
+        })).toThrow(TypeError);
+    });
+
+    it('should re-apply the algorithm pin on a cache hit', async () => {
+        const key = await createSigningKey('k1');
+        const cache = new MemoryTokenCache();
+        const base : Issuer = {
+            id: 'main', 
+            issuer: ISSUER, 
+            keys: staticKeys([key.jwk]), 
+        };
+        const a = createVerifier({
+            issuers: [base], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
+        const b = createVerifier({
+            issuers: [{ ...base, algorithms: ['PS256'] }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
+        const token = await sign(key);
+
+        await a.verify(token);
+        await expectCode(b.verify(token), VouchrErrorCode.CLAIM_INVALID);
+    });
+
+    it('should re-apply nbf with the reading verifier\'s clock tolerance on a cache hit', async () => {
+        const key = await createSigningKey('k1');
+        const cache = new MemoryTokenCache();
+        const base : Issuer = {
+            id: 'main', 
+            issuer: ISSUER, 
+            keys: staticKeys([key.jwk]), 
+        };
+        const a = createVerifier({
+            issuers: [{ ...base, clockTolerance: 120 }], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
+        const b = createVerifier({
+            issuers: [base], 
+            cache, 
+            cacheNamespace: 'shared', 
+        });
+        const token = await sign(key, { nbf: Math.floor(Date.now() / 1000) + 60 });
+
+        await a.verify(token);
+        await expectCode(b.verify(token), VouchrErrorCode.CLAIM_INVALID);
+    });
+
     it('should refuse a cached local token at its exp second', async () => {
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(1_800_000_000_500);
@@ -420,6 +525,7 @@ describe('src/verifier', () => {
         const memory = new MemoryTokenCache();
         const verifier = createVerifier({
             issuers: [{ issuer: ISSUER, keys: keys.source }],
+            cacheNamespace: 'api',
             cache: {
                 get: (k) => memory.get(k),
                 set: (k, entry, ttl) => memory.set(k, entry, Math.ceil(ttl)),
@@ -441,6 +547,7 @@ describe('src/verifier', () => {
         const memory = new MemoryTokenCache();
         const verifier = createVerifier({
             issuers: [{ issuer: ISSUER, keys: keys.source }],
+            cacheNamespace: 'api',
             cache: {
                 get: (k) => memory.get(k),
                 set: async (k, entry, ttl) => {

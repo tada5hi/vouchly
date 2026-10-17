@@ -216,7 +216,7 @@ const { claims } = await verifier.verify(token, {
 
 ### Caching
 
-By default each verifier keeps a `MemoryTokenCache` with up to 10000 entries (least recently used first out; `max` must be an integer of at least 1). Pass `cache: false` to turn it off, or your own `ITokenCache` to share results between processes:
+By default each verifier keeps its own `MemoryTokenCache` with up to 10000 entries (least recently used first out; `max` must be an integer of at least 1). Pass `cache: false` to turn it off, or your own `ITokenCache` to share results between processes, for example between replicas of one service. A cache you pass in needs a `cacheNamespace`, and every verifier using that namespace must have the same issuer configuration: a cache hit skips the key lookup and the signature check, so an entry is only as trustworthy as the configuration that wrote it.
 
 ```ts
 import type { ITokenCache, TokenCacheEntry } from 'vouchr';
@@ -242,14 +242,15 @@ const cache: ITokenCache = {
 const verifier = createVerifier({
     issuers: [{ issuer: 'https://id.example.com' }],
     cache,
+    cacheNamespace: 'orders-api',
 });
 ```
 
-- The key is the hex SHA-256 of the verifier's `cacheNamespace` (default `''`), a NUL character and the token, so the token itself is never stored as a key.
+- The key is the hex SHA-256 of the verifier's `cacheNamespace` (which may not contain NUL), a NUL character and the token, so the token itself is never stored as a key.
 - `ttl` is in seconds, fractional, and never runs past the token's `exp`. A local token without `exp` is not cached. A cache that keeps an entry longer (one that rounds `ttl` up, say) still cannot serve it: a hit at or after `exp` (beyond the issuer's `clockTolerance`) fails as `token_expired`.
 - A cache that throws counts as a miss on `get` and is ignored on `set`; it never fails a verification.
-- A cache hit skips the signature check and the key lookup, nothing else. The entry is served only under the issuer this verifier would select for the token, and only after this verifier's own `audience`, `requiredClaims`, `typ`, `exp` and `claims` predicate passed on the cached claims; a rule that fails gives the same error code as an uncached verify.
-- Verifiers that share one cache read each other's entries. Give each one its own `cacheNamespace` when they trust different things: two verifiers whose issuers have no `id` are both named by index (`'0'`, `'1'`, ...), and an entry stores only that name. The checks above keep a shared entry from widening what a verifier accepts, but a namespace keeps the entries apart outright.
+- A cache hit skips the key lookup and the signature check, so it cannot apply this verifier's key source, and the introspection settings of the verifier that wrote the entry are the ones that counted. That is why one namespace means one configuration.
+- As a second line, a hit is still held to the rules that need no key: it is served only under the issuer this verifier would select for the token, and only after this verifier's `audience`, `requiredClaims`, `typ`, `algorithms`, `nbf` (with its `clockTolerance`), `exp` and `claims` predicate passed on the cached entry. A rule that fails gives the same error code as an uncached verify.
 
 ## Issuer options
 

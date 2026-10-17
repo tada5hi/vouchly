@@ -125,6 +125,18 @@ function assertLocalClaims(issuer: Issuer, entry: TokenCacheEntry) : void {
     ) {
         throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token typ is not accepted.');
     }
+
+    if (
+        issuer.algorithms &&
+        (typeof entry.alg !== 'string' || !issuer.algorithms.includes(entry.alg))
+    ) {
+        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token algorithm is not accepted.');
+    }
+
+    const { nbf } = entry.claims;
+    if (typeof nbf === 'number' && nbf > (Date.now() / 1000) + (issuer.clockTolerance ?? 0)) {
+        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token is not yet valid.');
+    }
 }
 
 function buildRecords(options: VerifierOptions) : IssuerRecord[] {
@@ -186,6 +198,20 @@ export class Verifier implements IVerifier {
             }
         }
 
+        // A cache passed in may be shared with other verifiers, and a hit skips
+        // the key lookup and signature check, so it is only safe between
+        // verifiers whose issuer configuration is identical. The namespace
+        // makes the caller name that group.
+        if (options.cache && !options.cacheNamespace) {
+            throw new TypeError(
+                'A cache passed in needs a cacheNamespace; verifiers sharing one namespace must have identical issuer configurations.',
+            );
+        }
+
+        if (typeof options.cacheNamespace === 'string' && options.cacheNamespace.includes('\u0000')) {
+            throw new TypeError('The cacheNamespace must not contain a NUL character.');
+        }
+
         this.cache = options.cache === false ? undefined : (options.cache ?? new MemoryTokenCache());
         this.cacheNamespace = options.cacheNamespace ?? '';
 
@@ -230,6 +256,10 @@ export class Verifier implements IVerifier {
         };
         if (typeof parsed!.header.typ === 'string') {
             entry.typ = parsed!.header.typ;
+        }
+
+        if (typeof parsed!.header.alg === 'string') {
+            entry.alg = parsed!.header.alg;
         }
 
         await this.writeCache(key, entry, claims.exp);
