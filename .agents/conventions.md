@@ -107,5 +107,4 @@ Config lives in `release-please-config.json` (`release-type: node`, `include-v-i
 
 - Use **ESM** and modern TypeScript/JavaScript; target ES2022 features freely.
 - Before adding new code, study the surrounding patterns, naming, and structure, and stay consistent with them.
-- Keep the template generic — resist project-specific abstractions, runtime dependencies, and extra tooling that every downstream consumer would inherit.
 - Prefer upgrading a shared `@tada5hi/*` config over adding a local rule override.

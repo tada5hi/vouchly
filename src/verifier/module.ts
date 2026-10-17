@@ -41,8 +41,9 @@ const EC_ALGORITHMS : Record<string, string> = {
 };
 
 /**
- * The JWS algorithms a resolved key verifies, derived from the key itself so
- * a token's header can never pick another one.
+ * The JWS algorithms a resolved key verifies. A JWK without `alg` was
+ * imported with the header's `alg`, so for it this is the header's choice
+ * among the algorithms its key type supports; Issuer.algorithms pins it.
  */
 function deriveAlgorithms(key: CryptoKey) : string[] {
     const algorithm = key.algorithm as KeyAlgorithm & { hash?: { name: string }, namedCurve?: string };

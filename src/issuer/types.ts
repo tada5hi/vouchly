@@ -31,7 +31,9 @@ export type Issuer = {
     introspection?: IntrospectionOptions,
     audience?: string | string[],
     /**
-     * Default: the resolved key's algorithm only.
+     * Default: the resolved key's algorithm only. A JWK without `alg` is
+     * imported with the token header's `alg`, restricted to what its key
+     * type supports; set this to pin the algorithm.
      */
     algorithms?: string[],
     typ?: string,

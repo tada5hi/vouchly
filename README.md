@@ -1,5 +1,5 @@
 <p align="center">
-    <img src=".github/assets/logo.svg" alt="" width="96" height="96">
+    <img src="https://raw.githubusercontent.com/tada5hi/vouchr/master/.github/assets/logo.svg" alt="" width="96" height="96">
 </p>
 
 <h1 align="center">vouchr</h1>
@@ -37,7 +37,7 @@ A service that accepts tokens from more than one place (your own identity provid
 |---------|------------|-------------|
 | Which issuer? | Read `iss` yourself and branch | An allowlist of `Issuer` configs; an unknown `iss` fails with `issuer_untrusted` before any request goes out |
 | Where the keys come from | Wire `jwks_uri` per issuer by hand | `discovery()` reads it from the issuer's `/.well-known/openid-configuration`; `jwks()`, `staticKeys()` and `cachedKeys()` for everything else |
-| Algorithm confusion | Hope the allowed algorithms are set everywhere | Symmetric keys and RSA keys under 2048 bits are refused; the algorithm comes from the key, never from the token header |
+| Algorithm confusion | Hope the allowed algorithms are set everywhere | Symmetric keys and RSA keys under 2048 bits are refused; a JWK that names its `alg` decides the algorithm, one without is imported with the header's `alg`, restricted to what its key type supports, and `algorithms` pins it |
 | Malformed input | Whatever the decoder tolerates | Exactly three base64url segments, no padding, no whitespace, checked before the cache or any key lookup |
 | Opaque and revocable tokens | A second code path with its own HTTP client | `verification: 'introspection'` per issuer (RFC 7662), with a cache bound you choose |
 | Certificate-bound tokens | Compare `cnf.x5t#S256` yourself, and remember it on cache hits | RFC 8705 binding checked on every call, cache hits included, failing closed |
@@ -68,7 +68,7 @@ const { claims, issuer } = await verifier.verify(token);
 ```
 
 <p align="center">
-    <img src=".github/assets/verify.svg" alt="verify(token) parses the token strictly, looks up its SHA-256 in the token cache, selects a trusted issuer from the unverified iss claim, verifies the token locally with the issuer's key source or by RFC 7662 introspection, and finally checks the RFC 8705 certificate binding. A cache hit skips straight to the binding check. Each step fails with its own VouchrError code: token_malformed, issuer_untrusted, key_unavailable or signature_invalid or claim_invalid or introspection_failed, and binding_mismatch. Nothing is fetched before an issuer is selected." width="100%">
+    <img src="https://raw.githubusercontent.com/tada5hi/vouchr/master/.github/assets/verify.svg" alt="verify(token) parses the token strictly, looks up its SHA-256 in the token cache, selects a trusted issuer from the unverified iss claim, verifies the token locally with the issuer's key source or by RFC 7662 introspection, and finally checks the RFC 8705 certificate binding. A cache hit skips the key lookup and the signature, not the verifier's claim rules, then goes on to the binding check. Each step fails with its own VouchrError code: token_malformed, issuer_untrusted, key_unavailable or signature_invalid or claim_invalid or introspection_failed, and binding_mismatch. Nothing is fetched before an issuer is selected." width="100%">
 </p>
 
 ## Installation
@@ -261,7 +261,7 @@ const verifier = createVerifier({
 | `verification` | `'local' \| 'introspection'` | `'local'` | Check the signature, or ask the introspection endpoint. |
 | `introspection` | `{ endpoint?, authorization?, maxCacheTTL? }` | | See [Introspection](#introspection). `maxCacheTTL` is in seconds. |
 | `audience` | `string \| string[]` | not checked | Some `aud` value must be in the list. |
-| `algorithms` | `string[]` | what the resolved key implies | Never taken from the token header. |
+| `algorithms` | `string[]` | what the resolved key implies | The key's own `alg` when the JWK names one. A JWK without `alg` is imported with the token header's `alg`, restricted to algorithms its key type supports (an RSA key can then verify `RS*` or `PS*`); set `algorithms` to pin it. |
 | `typ` | `string` | not checked | The expected `typ` header, e.g. `at+jwt`. |
 | `clockTolerance` | `number` | `0` | Seconds of leeway for `exp` and `nbf`. |
 | `requiredClaims` | `string[]` | `['exp']` | Claims that must be present. |
