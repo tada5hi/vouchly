@@ -1,4 +1,5 @@
 export * from './cached';
+export * from './discovery';
 export * from './jwks';
 export * from './module';
 export * from './static';
