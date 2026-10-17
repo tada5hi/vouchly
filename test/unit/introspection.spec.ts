@@ -233,6 +233,24 @@ describe('src/introspection', () => {
         ]);
     });
 
+    it('should introspect with metadata that names no jwks_uri', async () => {
+        const stub = createStub((request) => {
+            if (request.url === `${ISSUER}/.well-known/openid-configuration`) {
+                return Response.json({ issuer: ISSUER, introspection_endpoint: ENDPOINT });
+            }
+
+            return activeResponse()();
+        });
+
+        const result = await verifier(stub, introspectionIssuer({ introspection: {} })).verify(JWT);
+
+        expect(result.source).toBe('introspection');
+        expect(stub.requests.map((request) => request.url)).toEqual([
+            `${ISSUER}/.well-known/openid-configuration`,
+            ENDPOINT,
+        ]);
+    });
+
     it('should fail without an endpoint, and never fetch for a function issuer', async () => {
         const discovered = createStub((request) => {
             if (request.url.endsWith('/.well-known/openid-configuration')) {

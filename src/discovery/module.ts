@@ -55,14 +55,15 @@ async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<
         throw new Error('The provider metadata names another issuer.');
     }
 
-    if (!isURL(body.jwks_uri)) {
-        throw new Error('The provider metadata has no valid jwks_uri.');
-    }
+    const metadata : ProviderMetadata = { issuer: body.issuer };
 
-    const metadata : ProviderMetadata = {
-        issuer: body.issuer,
-        jwks_uri: body.jwks_uri,
-    };
+    if (typeof body.jwks_uri !== 'undefined') {
+        if (!isURL(body.jwks_uri)) {
+            throw new Error('The provider metadata has an invalid jwks_uri.');
+        }
+
+        metadata.jwks_uri = body.jwks_uri;
+    }
 
     if (typeof body.introspection_endpoint !== 'undefined') {
         if (!isURL(body.introspection_endpoint)) {

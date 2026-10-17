@@ -35,10 +35,15 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
             throw new VouchrError(VouchrErrorCode.KEY_UNAVAILABLE, message, { cause: e });
         }
 
-        let source = sources.get(metadata.jwks_uri);
+        const { jwks_uri: url } = metadata;
+        if (!url) {
+            throw new VouchrError(VouchrErrorCode.KEY_UNAVAILABLE, 'The provider metadata has no jwks_uri.');
+        }
+
+        let source = sources.get(url);
         if (!source) {
-            source = jwks(metadata.jwks_uri);
-            sources.set(metadata.jwks_uri, source);
+            source = jwks(url);
+            sources.set(url, source);
         }
 
         return source(context);

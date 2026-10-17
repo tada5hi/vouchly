@@ -1,6 +1,9 @@
 export type ProviderMetadata = {
     issuer: string,
-    jwks_uri: string,
+    /**
+     * Required by the discovery key source, not by introspection.
+     */
+    jwks_uri?: string,
     introspection_endpoint?: string,
 };
 
