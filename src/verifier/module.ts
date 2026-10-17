@@ -27,6 +27,13 @@ type IssuerRecord = {
     keys?: KeySource,
 };
 
+/**
+ * One function for every verifier without a fetch of its own: discovery and
+ * jwks() memoise per fetch, so their caches are shared between such
+ * verifiers. It reads the global at call time, so a later stub applies.
+ */
+const defaultFetch : typeof fetch = (input, init) => fetch(input, init);
+
 const EC_ALGORITHMS : Record<string, string> = {
     'P-256': 'ES256',
     'P-384': 'ES384',
@@ -181,9 +188,7 @@ export class Verifier implements IVerifier {
         this.cache = options.cache === false ? undefined : (options.cache ?? new MemoryTokenCache());
         this.cacheNamespace = options.cacheNamespace ?? '';
 
-        // One stable function per verifier: key sources memoise per fetch.
-        const fetchFn = options.fetch;
-        this.fetch = fetchFn ?? ((input, init) => fetch(input, init));
+        this.fetch = options.fetch ?? defaultFetch;
     }
 
     async verify(token: string, options: VerifyOptions = {}) : Promise<VerifyResult> {

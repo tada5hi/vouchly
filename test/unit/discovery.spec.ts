@@ -1,13 +1,16 @@
 import type { JWK } from 'jose';
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import {
+    afterEach,
     describe,
     expect,
     it,
+    vi,
 } from 'vitest';
 import type { Issuer, KeySourceContext } from '../../src';
 import {
     VouchrErrorCode,
+    createVerifier,
     discovery,
     fetchProviderMetadata,
     isVouchrError,
@@ -99,6 +102,11 @@ async function expectKeyUnavailable(promise: Promise<unknown>) {
 }
 
 describe('src/discovery', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+    });
+
     it('should fetch the metadata, then the jwks_uri, and resolve the key', async () => {
         const key = await createSigningKey('a');
         const provider = createProvider(key);
@@ -197,5 +205,40 @@ describe('src/discovery', () => {
 
         const resolved = await resolveVerificationKey(discovery(), await createContext(key, flaky));
         expect((await exportJWK(resolved)).n).toEqual(key.jwk.n);
+    });
+
+    it('should share one discovery instance between verifiers using the default fetch', async () => {
+        const issuer = 'https://shared.example';
+        const key = await createSigningKey('a');
+        const urls : string[] = [];
+
+        vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+            const url = String(input);
+            urls.push(url);
+
+            if (url === `${issuer}/.well-known/openid-configuration`) {
+                return Response.json({ issuer, jwks_uri: `${issuer}/jwks` });
+            }
+
+            return Response.json({ keys: [key.jwk] });
+        });
+
+        const keys = discovery();
+        const first = createVerifier({ issuers: [{ issuer, keys }], cache: false });
+        const second = createVerifier({ issuers: [{ issuer, keys }], cache: false });
+
+        const token = await new SignJWT({ sub: 'user' })
+            .setProtectedHeader({ alg: 'RS256', kid: key.jwk.kid })
+            .setIssuer(issuer)
+            .setExpirationTime('1h')
+            .sign(key.privateKey);
+
+        await first.verify(token);
+        await second.verify(token);
+
+        expect(urls).toEqual([
+            `${issuer}/.well-known/openid-configuration`,
+            `${issuer}/jwks`,
+        ]);
     });
 });

@@ -307,6 +307,7 @@ Use `isVouchrError(error)` rather than `instanceof`: it checks a `Symbol.for('vo
 - **A locally verified token is valid until `exp`.** A signature cannot tell that the token was revoked. If revocation must take effect sooner, use introspection with a short `maxCacheTTL`, or keep access tokens short-lived.
 - **Nothing is fetched from a URL inside the token.** Discovery, JWKS and introspection URLs come from your configuration; a function issuer therefore needs its own key source or an explicit introspection endpoint.
 - **Keys stay in process memory.** `CryptoKey`s cannot be serialised, so key caches (`jwks`, `discovery`, `cachedKeys`) are per process even when the token cache is shared.
+- **Key caches live on the key source instance.** Each `discovery()`, `jwks()` and `cachedKeys()` call creates its own cache, and a string issuer without `keys` gets a `discovery()` of its own per verifier. Discovery metadata is shared by every verifier using the default `fetch` (or the same `fetch` function), but the JWKS behind it is not. If you build verifiers at runtime (one per request, per tenant), create the key source once and pass the same instance to each of them, or every verifier fetches the keys again.
 - **Results are copies.** Every result, including a cache hit, is a fresh `structuredClone`; changing it does not change the cached entry.
 - **No permission model.** vouchr answers whether a token is genuine and which issuer it came from. Deciding what the caller may do is up to you.
 
