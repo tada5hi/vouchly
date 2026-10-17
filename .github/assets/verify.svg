@@ -1,0 +1,112 @@
+<svg width="960" height="352" viewBox="0 0 960 352" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vv-title vv-desc">
+    <title id="vv-title">What verify(token) does, step by step</title>
+    <desc id="vv-desc">verify(token) parses the token strictly, looks up its SHA-256 in the token cache, selects a trusted issuer from the unverified iss claim, verifies the token locally with the issuer's key source or by RFC 7662 introspection, and finally checks the RFC 8705 certificate binding. A cache hit skips straight to the binding check. Each step fails with its own VouchrError code: token_malformed, issuer_untrusted, key_unavailable or signature_invalid or claim_invalid or introspection_failed, and binding_mismatch. Nothing is fetched before an issuer is selected.</desc>
+
+    <style>
+        :root {
+            --fg: #18262A;
+            --muted: #55676B;
+            --panel: #F3F8F7;
+            --panel-edge: #CFDEDB;
+            --card: #FFFFFF;
+            --rail: #8A9C99;
+            --err: #B4441F;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --fg: #E9F3F1;
+                --muted: #93A6A3;
+                --panel: #121B1C;
+                --panel-edge: #33433F;
+                --card: #0B1213;
+                --rail: #5F716E;
+                --err: #F08A62;
+            }
+        }
+        text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: var(--fg); }
+        .muted { fill: var(--muted); }
+        .code { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; }
+        .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; fill: var(--muted); }
+        .title { font-size: 15px; font-weight: 600; }
+        .panel { fill: var(--panel); stroke: var(--panel-edge); }
+        .card { fill: var(--card); }
+        .rail { stroke: var(--rail); }
+        .chip { fill: var(--card); stroke: var(--panel-edge); }
+        .err { fill: var(--err); }
+    </style>
+
+    <defs>
+        <marker id="vv-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 Z" fill="#8A9C99"/>
+        </marker>
+        <marker id="vv-hit" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 Z" fill="#E0962B"/>
+        </marker>
+    </defs>
+
+    <rect class="panel" x="8" y="8" width="944" height="336" rx="18"/>
+    <text class="code muted" x="28" y="38" font-size="12">await verifier.verify(token, { certificateThumbprint })</text>
+
+    <!-- cache hit shortcut -->
+    <path d="M296 104 V66 H844 V100" stroke="#E0962B" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#vv-hit)"/>
+    <rect class="chip" x="508" y="56" width="124" height="20" rx="10"/>
+    <text class="code" x="570" y="70" font-size="11" text-anchor="middle">cache hit</text>
+
+    <!-- 1 parse -->
+    <rect class="card" x="28" y="104" width="160" height="104" rx="12" stroke="#0E9F8F" stroke-width="1.5"/>
+    <text class="title" x="44" y="130">1  Parse</text>
+    <text class="code muted" x="44" y="154" font-size="11">three base64url</text>
+    <text class="code muted" x="44" y="170" font-size="11">segments, no padding,</text>
+    <text class="code muted" x="44" y="186" font-size="11">no whitespace</text>
+
+    <!-- 2 cache -->
+    <rect class="card" x="216" y="104" width="160" height="104" rx="12" stroke="#E0962B" stroke-width="1.5"/>
+    <text class="title" x="232" y="130">2  Cache</text>
+    <text class="code muted" x="232" y="154" font-size="11">key: SHA-256 of</text>
+    <text class="code muted" x="232" y="170" font-size="11">the token, kept</text>
+    <text class="code muted" x="232" y="186" font-size="11">until exp at most</text>
+
+    <!-- 3 issuer -->
+    <rect class="card" x="404" y="104" width="160" height="104" rx="12" stroke="#0E9F8F" stroke-width="1.5"/>
+    <text class="title" x="420" y="130">3  Select issuer</text>
+    <text class="code muted" x="420" y="154" font-size="11">unverified iss vs</text>
+    <text class="code muted" x="420" y="170" font-size="11">the issuers list;</text>
+    <text class="code muted" x="420" y="186" font-size="11">no fetch before</text>
+
+    <!-- 4 verify -->
+    <rect class="card" x="592" y="104" width="160" height="104" rx="12" stroke="#0E9F8F" stroke-width="1.5"/>
+    <text class="title" x="608" y="130">4  Verify</text>
+    <text class="code muted" x="608" y="154" font-size="11">local: keys +</text>
+    <text class="code muted" x="608" y="170" font-size="11">jwtVerify, or</text>
+    <text class="code muted" x="608" y="186" font-size="11">RFC 7662 introspect</text>
+
+    <!-- 5 binding -->
+    <rect class="card" x="780" y="104" width="152" height="104" rx="12" stroke="#E0962B" stroke-width="1.5"/>
+    <text class="title" x="796" y="130">5  Binding</text>
+    <text class="code muted" x="796" y="154" font-size="11">cnf.x5t#S256 must</text>
+    <text class="code muted" x="796" y="170" font-size="11">equal the presented</text>
+    <text class="code muted" x="796" y="186" font-size="11">thumbprint</text>
+
+    <!-- arrows between steps -->
+    <path class="rail" d="M188 156 H212" stroke-width="2" marker-end="url(#vv-head)"/>
+    <path class="rail" d="M376 156 H400" stroke-width="2" marker-end="url(#vv-head)"/>
+    <path class="rail" d="M564 156 H588" stroke-width="2" marker-end="url(#vv-head)"/>
+    <path class="rail" d="M752 156 H776" stroke-width="2" marker-end="url(#vv-head)"/>
+
+    <!-- failures -->
+    <text class="label" x="28" y="240">fails with</text>
+    <rect class="chip" x="28" y="252" width="160" height="22" rx="11"/>
+    <text class="code err" x="108" y="267" font-size="11" text-anchor="middle">token_malformed</text>
+    <rect class="chip" x="216" y="252" width="160" height="22" rx="11"/>
+    <text class="code muted" x="296" y="267" font-size="11" text-anchor="middle">a miss, never an error</text>
+    <rect class="chip" x="404" y="252" width="160" height="22" rx="11"/>
+    <text class="code err" x="484" y="267" font-size="11" text-anchor="middle">issuer_untrusted</text>
+    <rect class="chip" x="592" y="252" width="160" height="22" rx="11"/>
+    <text class="code err" x="672" y="267" font-size="11" text-anchor="middle">key_unavailable</text>
+    <rect class="chip" x="592" y="280" width="160" height="22" rx="11"/>
+    <text class="code err" x="672" y="295" font-size="10" text-anchor="middle">signature / claim_invalid</text>
+    <rect class="chip" x="592" y="308" width="160" height="22" rx="11"/>
+    <text class="code err" x="672" y="323" font-size="10" text-anchor="middle">token_expired / inactive</text>
+    <rect class="chip" x="780" y="252" width="152" height="22" rx="11"/>
+    <text class="code err" x="856" y="267" font-size="11" text-anchor="middle">binding_mismatch</text>
+</svg>

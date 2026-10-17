@@ -64,7 +64,7 @@ Provider is **v8**, and coverage is measured over `src/**/*.{ts,tsx,js,jsx}` onl
 | Lines      | 80%       |
 | Statements | 80%       |
 
-Reports land in `coverage/` (git-ignored). The README links a Codecov badge, but no upload step is wired into CI.
+Reports land in `coverage/` (git-ignored). No upload step is wired into CI, so the README carries no coverage badge.
 
 ## CI Pipeline
 

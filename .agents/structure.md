@@ -22,7 +22,8 @@ vouchr/
 ├── dist/                            # Build output (git-ignored, produced by tsdown)
 ├── .github/
 │   ├── assets/
-│   │   └── logo.svg             # README header logo (referenced by relative path)
+│   │   ├── logo.svg                 # README header logo (token segments + seal, animated once)
+│   │   └── verify.svg               # README diagram of the verify() steps and their error codes
 │   ├── actions/
 │   │   ├── install/action.yml       # Composite action: setup-node + cache + npm ci
 │   │   └── build/action.yml         # Composite action: cache dist/ by SHA + npm run build
