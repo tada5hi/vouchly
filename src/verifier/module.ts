@@ -375,6 +375,15 @@ export class Verifier implements IVerifier {
             assertLocalClaims(record.issuer, entry);
         }
 
+        // A cache may keep an entry longer than asked (a TTL rounded up).
+        const { exp } = entry.claims;
+        if (
+            typeof exp === 'number' &&
+            exp <= (Date.now() / 1000) - (record.issuer.clockTolerance ?? 0)
+        ) {
+            throw new VouchrError(VouchrErrorCode.TOKEN_EXPIRED, 'The token has expired.');
+        }
+
         assertAudience(record.issuer, entry.claims);
         await this.assertClaimsPredicate(record.issuer, entry.claims);
 
@@ -382,7 +391,7 @@ export class Verifier implements IVerifier {
     }
 
     /**
-     * Caches until `exp`, or for at most `maxTTL` seconds when given. A token
+     * Caches until `exp`, measured to the millisecond, or for at most `maxTTL` seconds when given. A token
      * without `exp` is cached only under a `maxTTL`. A cache failure is ignored.
      */
     protected async writeCache(key: string, entry: TokenCacheEntry, exp: unknown, maxTTL?: number) : Promise<void> {
@@ -392,7 +401,7 @@ export class Verifier implements IVerifier {
 
         let ttl : number | undefined;
         if (typeof exp === 'number' && Number.isFinite(exp)) {
-            ttl = exp - Math.floor(Date.now() / 1000);
+            ttl = exp - (Date.now() / 1000);
         }
 
         if (typeof maxTTL === 'number') {

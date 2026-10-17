@@ -8,6 +8,7 @@ import {
 } from 'vitest';
 import type { Issuer, VerifierOptions } from '../../src';
 import {
+    MemoryTokenCache,
     VouchrErrorCode,
     createVerifier,
     introspect,
@@ -291,8 +292,9 @@ describe('src/introspection', () => {
 
     it('should not cache past the response exp', async () => {
         vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(1_800_000_000_500);
 
-        const stub = createStub(activeResponse({ exp: now() + 2 }));
+        const stub = createStub(activeResponse({ exp: 1_800_000_002 }));
         const instance = verifier(stub, introspectionIssuer({
             introspection: {
                 endpoint: ENDPOINT,
@@ -301,10 +303,33 @@ describe('src/introspection', () => {
         }));
 
         await instance.verify(JWT);
-        vi.advanceTimersByTime(3000);
+        vi.setSystemTime(1_800_000_001_999);
+        await instance.verify(JWT);
+        expect(stub.requests).toHaveLength(1);
+
+        vi.setSystemTime(1_800_000_002_000);
+        await instance.verify(JWT);
+        expect(stub.requests).toHaveLength(2);
+    });
+
+    it('should refuse an expired response served by a cache that rounds its ttl up', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(1_800_000_000_500);
+
+        const stub = createStub(activeResponse({ exp: 1_800_000_002 }));
+        const memory = new MemoryTokenCache();
+        const instance = verifier(stub, introspectionIssuer(), {
+            cache: {
+                get: (k) => memory.get(k),
+                set: (k, entry, ttl) => memory.set(k, entry, Math.ceil(ttl)),
+            },
+        });
+
         await instance.verify(JWT);
 
-        expect(stub.requests).toHaveLength(2);
+        vi.setSystemTime(1_800_000_002_000);
+        await expectCode(instance.verify(JWT), VouchrErrorCode.TOKEN_EXPIRED);
+        expect(stub.requests).toHaveLength(1);
     });
 
     it('should introspect an opaque token with the opaque issuer', async () => {

@@ -6,9 +6,11 @@ import {
     generateKeyPair,
 } from 'jose';
 import {
+    afterEach,
     describe,
     expect,
     it,
+    vi,
 } from 'vitest';
 import type { Issuer, KeySource } from '../../src';
 import {
@@ -102,6 +104,10 @@ async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) {
 const now = () => Math.floor(Date.now() / 1000);
 
 describe('src/verifier', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('should verify a valid token locally', async () => {
         const key = await createSigningKey('k1');
         const verifier = createVerifier({
@@ -396,6 +402,43 @@ describe('src/verifier', () => {
 
         expect(keysA.calls()).toBe(1);
         expect(keysB.calls()).toBe(1);
+    });
+
+    it('should refuse a cached local token at its exp second', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(1_800_000_000_500);
+
+        const key = await createSigningKey('k1');
+        const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }] });
+        const token = await sign(key, { exp: 1_800_000_010 });
+
+        await verifier.verify(token);
+
+        vi.setSystemTime(1_800_000_010_000);
+        await expectCode(verifier.verify(token), VouchrErrorCode.TOKEN_EXPIRED);
+    });
+
+    it('should refuse an expired token served by a cache that rounds its ttl up', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(1_800_000_000_500);
+
+        const key = await createSigningKey('k1');
+        const keys = countingKeys([key.jwk]);
+        const memory = new MemoryTokenCache();
+        const verifier = createVerifier({
+            issuers: [{ issuer: ISSUER, keys: keys.source }],
+            cache: {
+                get: (k) => memory.get(k),
+                set: (k, entry, ttl) => memory.set(k, entry, Math.ceil(ttl)),
+            },
+        });
+        const token = await sign(key, { exp: 1_800_000_010 });
+
+        await verifier.verify(token);
+
+        vi.setSystemTime(1_800_000_010_000);
+        await expectCode(verifier.verify(token), VouchrErrorCode.TOKEN_EXPIRED);
+        expect(keys.calls()).toBe(1);
     });
 
     it('should refuse a padded variant before any key fetch or cache write', async () => {
