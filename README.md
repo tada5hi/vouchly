@@ -212,6 +212,7 @@ const { claims } = await verifier.verify(token, {
 - A token with `cnf` fails as `binding_mismatch` unless `cnf.x5t#S256` equals the thumbprint. That includes a `cnf` that carries no `x5t#S256` at all, such as a DPoP `jkt`.
 - A function is only called for a bound token, so it costs nothing for the rest.
 - The check runs on every call, also when the result comes from the cache.
+- A JWT verified by introspection is held to its own `cnf` as well as the response's: the token's claims are unverified, so they can only add a requirement. When either carries a thumbprint, the presented one must match every thumbprint present.
 
 ### Caching
 

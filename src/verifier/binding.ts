@@ -29,8 +29,21 @@ export function assertCertificateBinding(claims: JWTPayload, thumbprint: string 
     }
 }
 
-export async function resolveCertificateBinding(claims: JWTPayload, options: VerifyOptions) : Promise<void> {
-    if (typeof claims.cnf === 'undefined' || claims.cnf === null) {
+function isBound(claims: JWTPayload) : boolean {
+    return typeof claims.cnf !== 'undefined' && claims.cnf !== null;
+}
+
+/**
+ * Checks the binding of every claim set given: a token verified by
+ * introspection passes its own unverified claims next to the response, since
+ * an unverified `cnf` may only add a requirement, never lift one.
+ */
+export async function resolveCertificateBinding(
+    claims: JWTPayload | JWTPayload[],
+    options: VerifyOptions,
+) : Promise<void> {
+    const bound = (Array.isArray(claims) ? claims : [claims]).filter(isBound);
+    if (bound.length === 0) {
         return;
     }
 
@@ -49,5 +62,7 @@ export async function resolveCertificateBinding(claims: JWTPayload, options: Ver
         thumbprint = options.certificateThumbprint;
     }
 
-    assertCertificateBinding(claims, thumbprint);
+    for (const item of bound) {
+        assertCertificateBinding(item, thumbprint);
+    }
 }

@@ -197,7 +197,7 @@ export class Verifier implements IVerifier {
 
         const cached = await this.readCache(key, parsed);
         if (cached) {
-            await resolveCertificateBinding(cached.entry.claims, options);
+            await resolveCertificateBinding(this.bindingClaims(cached.entry.claims, cached.entry.source, parsed), options);
 
             return {
                 claims: structuredClone(cached.entry.claims),
@@ -207,12 +207,12 @@ export class Verifier implements IVerifier {
         }
 
         if (!compact) {
-            return this.introspect(token, key, this.opaque!, options);
+            return this.introspect(token, key, this.opaque!, options, parsed);
         }
 
         const record = this.selectRecord(parsed!);
         if (record.issuer.verification === 'introspection') {
-            return this.introspect(token, key, record, options);
+            return this.introspect(token, key, record, options, parsed);
         }
 
         const claims = await this.verifyLocal(parsed!, record);
@@ -235,6 +235,18 @@ export class Verifier implements IVerifier {
             issuer: record.issuer,
             source: 'local',
         };
+    }
+
+    /**
+     * The claim sets whose `cnf` a result must satisfy: an introspected
+     * compact token is held to its own `cnf` as well as the response's.
+     */
+    protected bindingClaims(
+        claims: JWTPayload,
+        source: VerifyResult['source'],
+        token: ParsedToken | undefined,
+    ) : JWTPayload[] {
+        return source === 'introspection' && token ? [claims, token.claims] : [claims];
     }
 
     protected selectRecord(token: ParsedToken) : IssuerRecord {
@@ -313,7 +325,13 @@ export class Verifier implements IVerifier {
         return claims;
     }
 
-    protected async introspect(token: string, key: string, record: IssuerRecord, options: VerifyOptions) : Promise<VerifyResult> {
+    protected async introspect(
+        token: string,
+        key: string,
+        record: IssuerRecord,
+        options: VerifyOptions,
+        parsed?: ParsedToken,
+    ) : Promise<VerifyResult> {
         const claims = await this.verifyIntrospection(token, record);
 
         await this.writeCache(
@@ -327,7 +345,7 @@ export class Verifier implements IVerifier {
             record.issuer.introspection?.maxCacheTTL,
         );
 
-        await resolveCertificateBinding(claims, options);
+        await resolveCertificateBinding(this.bindingClaims(claims, 'introspection', parsed), options);
 
         return {
             claims: structuredClone(claims),

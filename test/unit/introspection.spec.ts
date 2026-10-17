@@ -356,6 +356,35 @@ describe('src/introspection', () => {
         expect(stub.requests).toHaveLength(1);
     });
 
+    it('should enforce the certificate binding the token itself carries', async () => {
+        const bound = [
+            'eyJhbGciOiJSUzI1NiJ9',
+            btoa(JSON.stringify({
+                iss: ISSUER, 
+                sub: 'user', 
+                cnf: { 'x5t#S256': THUMBPRINT }, 
+            }))
+                .replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_'),
+            'c2lnbmF0dXJl',
+        ].join('.');
+
+        const stub = createStub(activeResponse());
+        const instance = verifier(stub);
+
+        await expectCode(instance.verify(bound), VouchrErrorCode.BINDING_MISMATCH);
+        await expectCode(instance.verify(bound), VouchrErrorCode.BINDING_MISMATCH);
+
+        const result = await instance.verify(bound, { certificateThumbprint: THUMBPRINT });
+        expect(result.claims.cnf).toBeUndefined();
+        expect(stub.requests).toHaveLength(1);
+
+        const conflicting = createStub(activeResponse({ cnf: { 'x5t#S256': 'other' } }));
+        await expectCode(
+            verifier(conflicting).verify(bound, { certificateThumbprint: THUMBPRINT }),
+            VouchrErrorCode.BINDING_MISMATCH,
+        );
+    });
+
     it('should not let a mutated result change the cached entry', async () => {
         const stub = createStub(activeResponse({ scope: 'read' }));
         const instance = verifier(stub);
