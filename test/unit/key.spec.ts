@@ -199,23 +199,33 @@ describe('src/key', () => {
             expect(loads).toEqual(1);
         });
 
-        it('should reject a load slower than the timeout and load again on the next call', async () => {
+        it('should reject a load slower than the timeout and drop its late result', async () => {
             const key = await createSigningKey('a');
             const context = await createContext(key);
 
             let loads = 0;
+            let settled = false;
             const source = cachedKeys(async () => {
                 loads++;
                 if (loads === 1) {
-                    await wait(200);
+                    await wait(100);
+                    settled = true;
                 }
 
                 return key.jwk;
             }, { key: () => 'a', timeout: 0.02 });
 
             await expectKeyUnavailable(resolveVerificationKey(source, context));
-            await resolveVerificationKey(source, context);
+            expect(settled).toBe(false);
 
+            await wait(150);
+            expect(settled).toBe(true);
+
+            // Stored, the late result would answer this call without a load.
+            await resolveVerificationKey(source, context);
+            expect(loads).toEqual(2);
+
+            await resolveVerificationKey(source, context);
             expect(loads).toEqual(2);
         });
 

@@ -2,6 +2,7 @@ import type { JWK, JWTPayload } from 'jose';
 import {
     SignJWT,
     base64url,
+    errors,
     exportJWK,
     generateKeyPair,
 } from 'jose';
@@ -89,7 +90,7 @@ function countingKeys(keys: JWK[]) : { source: KeySource, calls: () => number } 
     };
 }
 
-async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) {
+async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) : Promise<unknown> {
     let error : unknown;
     try {
         await promise;
@@ -99,6 +100,8 @@ async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) {
 
     expect(isVouchrError(error)).toBe(true);
     expect((error as { code: VouchrErrorCode }).code).toBe(code);
+
+    return error;
 }
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -242,7 +245,9 @@ describe('src/verifier', () => {
 
     it('should not accept alg none', async () => {
         const key = await createSigningKey('k1');
-        const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }] });
+        // A key source that answers whatever the header asks for, so jose
+        // itself has to refuse the algorithm.
+        const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: async () => key.jwk }] });
 
         const header = base64url.encode(JSON.stringify({ alg: 'none', kid: 'k1' }));
         const payload = base64url.encode(JSON.stringify({
@@ -250,24 +255,12 @@ describe('src/verifier', () => {
             iss: ISSUER, 
             exp: now() + 3600, 
         }));
-        const unsigned = `${header}.${payload}.`;
+        // An empty signature segment is not a compact JWS at all.
+        await expectCode(verifier.verify(`${header}.${payload}.`), VouchrErrorCode.TOKEN_MALFORMED);
 
-        let error : unknown;
-        try {
-            await verifier.verify(unsigned);
-        } catch (e) {
-            error = e;
-        }
-        expect(isVouchrError(error)).toBe(true);
-
-        // A non-empty signature segment still does not get alg none through.
-        let second : unknown;
-        try {
-            await verifier.verify(`${header}.${payload}.AAAA`);
-        } catch (e) {
-            second = e;
-        }
-        expect(isVouchrError(second)).toBe(true);
+        // A non-empty one gets as far as jose, which refuses the algorithm.
+        const error = await expectCode(verifier.verify(`${header}.${payload}.AAAA`), VouchrErrorCode.CLAIM_INVALID);
+        expect((error as Error).cause).toBeInstanceOf(errors.JOSEAlgNotAllowed);
     });
 
     it('should refuse when the claims predicate does not pass', async () => {

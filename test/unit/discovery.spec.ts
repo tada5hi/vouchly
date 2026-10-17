@@ -73,7 +73,7 @@ function createProvider(key: SigningKey, metadata: Record<string, unknown> = {})
 
 async function createContext(
     key: SigningKey,
-    fetch: typeof fetch,
+    fetchFn: typeof fetch,
     issuer: Issuer['issuer'] = ISSUER,
 ) : Promise<KeySourceContext> {
     const token = await new SignJWT({ sub: 'user' })
@@ -85,7 +85,7 @@ async function createContext(
     return {
         token: parseToken(token),
         issuer: { issuer },
-        fetch,
+        fetch: fetchFn,
     };
 }
 
