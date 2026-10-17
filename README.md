@@ -162,7 +162,7 @@ const verifier = createVerifier({
 
 | Source | Use it for |
 |--------|------------|
-| `discovery({ cacheMaxAge })` | Default for a string `issuer`. Reads `jwks_uri` from `<issuer>/.well-known/openid-configuration`, which must name the same `issuer`. Metadata is reused for `cacheMaxAge` seconds (default 600). |
+| `discovery({ cacheMaxAge })` | Default for a string `issuer`. Reads `jwks_uri` from `<issuer>/.well-known/openid-configuration`, which must name the same `issuer`. Metadata is reused for `cacheMaxAge` seconds (default 600); after a failed fetch the issuer is not asked again for 30 seconds, and keys fail fast as `key_unavailable` meanwhile. |
 | `jwks(url, { cacheMaxAge, cooldownDuration, timeoutDuration })` | A known JWKS URL. Wraps jose's `createRemoteJWKSet`; the three options are milliseconds, as in jose. |
 | `staticKeys(keys)` | Keys you ship with the service, as JWKs. |
 | `cachedKeys(load, { key, ttl, timeout, max })` | A custom loader, with a per-key TTL and shared in-flight loads. |

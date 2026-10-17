@@ -2,6 +2,7 @@ import type { DiscoveryOptions, ProviderMetadata } from './types';
 
 const CACHE_MAX_AGE = 600;
 const TIMEOUT = 10_000;
+const FAILURE_COOLDOWN = 30_000;
 
 type MetadataItem = {
     metadata: ProviderMetadata,
@@ -12,6 +13,7 @@ type MetadataItem = {
 // two verifiers with different fetch functions never share an answer.
 const items = new WeakMap<typeof fetch, Map<string, MetadataItem>>();
 const flights = new WeakMap<typeof fetch, Map<string, Promise<ProviderMetadata>>>();
+const failures = new WeakMap<typeof fetch, Map<string, number>>();
 
 function scope<T>(store: WeakMap<typeof fetch, Map<string, T>>, fetchFn: typeof globalThis.fetch) : Map<string, T> {
     let map = store.get(fetchFn);
@@ -76,7 +78,8 @@ async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<
 /**
  * Reads `<issuer>/.well-known/openid-configuration`. The issuer must come
  * from configuration, never from a token. Answers are reused for
- * cacheMaxAge seconds; failures are not.
+ * cacheMaxAge seconds; after a failure, the issuer is not asked again for
+ * 30 seconds and calls fail fast instead.
  */
 export async function fetchProviderMetadata(
     issuer: string,
@@ -91,6 +94,16 @@ export async function fetchProviderMetadata(
         return structuredClone(item.metadata);
     }
 
+    const failed = scope(failures, fetchFn);
+    const failedAt = failed.get(issuer);
+    if (typeof failedAt === 'number') {
+        if (Date.now() - failedAt < FAILURE_COOLDOWN) {
+            throw new Error('The provider metadata failed to load recently, not trying again yet.');
+        }
+
+        failed.delete(issuer);
+    }
+
     const pending = scope(flights, fetchFn);
     let flight = pending.get(issuer);
     if (!flight) {
@@ -98,6 +111,9 @@ export async function fetchProviderMetadata(
             .then((metadata) => {
                 cached.set(issuer, { metadata, fetchedAt: Date.now() });
                 return metadata;
+            }, (e: unknown) => {
+                failed.set(issuer, Date.now());
+                throw e;
             })
             .finally(() => {
                 pending.delete(issuer);

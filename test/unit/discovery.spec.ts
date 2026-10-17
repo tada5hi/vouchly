@@ -187,7 +187,9 @@ describe('src/discovery', () => {
         expect(metadataRequests).toHaveLength(1);
     });
 
-    it('should not memoise a failure', async () => {
+    it('should fail fast for 30 seconds after a failure, then try again', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+
         const key = await createSigningKey('a');
         const provider = createProvider(key);
 
@@ -202,7 +204,13 @@ describe('src/discovery', () => {
         };
 
         await expectKeyUnavailable(resolveVerificationKey(discovery(), await createContext(key, flaky)));
+        expect(calls).toBe(1);
 
+        vi.advanceTimersByTime(29_999);
+        await expectKeyUnavailable(resolveVerificationKey(discovery(), await createContext(key, flaky)));
+        expect(calls).toBe(1);
+
+        vi.advanceTimersByTime(1);
         const resolved = await resolveVerificationKey(discovery(), await createContext(key, flaky));
         expect((await exportJWK(resolved)).n).toEqual(key.jwk.n);
     });
