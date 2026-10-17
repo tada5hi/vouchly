@@ -22,7 +22,7 @@ The three `@tada5hi/*` config packages are the source of truth for style, TS, an
 - `npm run lint:fix` auto-fixes most style violations — run it before hand-editing formatting.
 - Never edit `dist/` — it is generated and git-ignored.
 - Never hand-edit `.release-please-manifest.json` or the version in `package.json`; release-please owns both.
-- Keep the package **runtime-dependency-free**. New dependencies belong in `devDependencies` unless the library genuinely ships code that imports them.
+- `jose` is the **only** runtime dependency. New dependencies belong in `devDependencies` unless the library genuinely ships code that imports them, and no `node:*` import may appear under `src/`.
 
 ## Code Style
 
@@ -35,7 +35,7 @@ The three `@tada5hi/*` config packages are the source of truth for style, TS, an
 ## File Organization
 
 - `src/index.ts` is the public barrel. Anything not re-exported from it is internal and never published.
-- Add new implementation modules under `src/` as `kebab-case.ts` and re-export them from `index.ts`.
+- Each module is a folder under `src/` (`src/error/`, `src/token/`) holding `module.ts` (implementation), `types.ts` (exported types), optionally `constants.ts`, and an `index.ts` barrel; `src/index.ts` re-exports the folder barrels.
 - Exported types (interfaces, type aliases) belong in a `types.ts` next to the implementation, re-exported through the nearest barrel.
 - Tests mirror the `src/` path under `test/unit/` — see [testing](testing.md).
 
