@@ -10,6 +10,8 @@ vouchr/
 │   ├── index.ts                     # Public entry point; everything exported here is public API
 │   ├── cache/                       # ITokenCache, MemoryTokenCache, hashToken
 │   ├── error/                       # VouchrError, VouchrErrorCode, isVouchrError
+│   ├── issuer/                      # Issuer, IntrospectionOptions (types)
+│   ├── key/                         # KeySource, staticKeys, jwks, cachedKeys, resolveVerificationKey
 │   └── token/                       # parseToken, isCompactToken, ParsedToken
 ├── test/
 │   ├── unit/                        # Unit specs, one per src module (only files matched by the vitest include glob)
@@ -45,6 +47,8 @@ vouchr/
 | `src/index.ts`           | Sole entry point and barrel; re-exports every module folder below.                               |
 | `src/cache/`             | Verification result cache. `ITokenCache` is the port (`get`, `set` with a TTL in seconds; a TTL <= 0 stores nothing), keyed by `hashToken`, the hex SHA-256 of the raw token, so a token never sits in memory as a key. `MemoryTokenCache` is the default: bounded by `max` (default 10000), LRU through `Map` insertion order, TTL checked on read, and it clones entries on the way in and out so a caller mutating a result cannot change what is cached. |
 | `src/error/`             | `VouchrError` (carries a `VouchrErrorCode` and the original failure as `cause`) and `isVouchrError`, which checks the `Symbol.for('vouchr.error')` marker rather than `instanceof`, so it still matches when two copies of the package are installed. Every error `verify` throws is a `VouchrError`. |
+| `src/issuer/`            | The `Issuer` config type (and `IntrospectionOptions`): which `iss` it trusts (an exact string, or a function over the UNVERIFIED claims that only selects the config), its key source, audience, algorithms, `typ`, clock tolerance, required claims and an optional claims predicate. |
+| `src/key/`               | Key sources and the key policy. A `KeySource` is `(context) => Promise<CryptoKey \| JWK>`; `staticKeys` (jose `createLocalJWKSet`), `jwks(url)` (jose `createRemoteJWKSet`, one set per `fetch`, the verifier's `fetch` passed as `customFetch`) and `cachedKeys(load, { key, ttl, timeout, max })` (per-key TTL, one shared in-flight load per key, a deadline after which the flight rejects and a late result is dropped, oldest-first eviction at `max`, failures never cached). `resolveVerificationKey` is the only way a key reaches verification: it imports a JWK with `jwk.alg ?? header.alg`, refuses a symmetric key, an RSA key under 2048 bits and a JWK whose `use` is not `sig` (`policy.ts`, internal), and turns every failure into `KEY_UNAVAILABLE` with the original as `cause`. |
 | `src/token/`             | Strict token parsing. `isCompactToken` accepts exactly three base64url segments (no padding, no whitespace); `parseToken` checks that first, then decodes header and claims with jose and maps any failure to `TOKEN_MALFORMED`. It verifies nothing: callers use it to pick an issuer before any key fetch. |
 | `test/vitest.config.ts`  | Test include glob and v8 coverage thresholds. Referenced explicitly by the npm scripts.            |
 | `tsdown.config.ts`       | Bundles `src/index.ts` to ESM with declarations and sourcemaps.                                    |
