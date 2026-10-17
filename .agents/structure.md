@@ -8,6 +8,7 @@ Single npm package — no workspaces, no monorepo tooling.
 vouchr/
 ├── src/
 │   ├── index.ts                     # Public entry point; everything exported here is public API
+│   ├── cache/                       # ITokenCache, MemoryTokenCache, hashToken
 │   ├── error/                       # VouchrError, VouchrErrorCode, isVouchrError
 │   └── token/                       # parseToken, isCompactToken, ParsedToken
 ├── test/
@@ -42,6 +43,7 @@ vouchr/
 | Module                   | Purpose                                                                                          |
 |--------------------------|--------------------------------------------------------------------------------------------------|
 | `src/index.ts`           | Sole entry point and barrel; re-exports every module folder below.                               |
+| `src/cache/`             | Verification result cache. `ITokenCache` is the port (`get`, `set` with a TTL in seconds; a TTL <= 0 stores nothing), keyed by `hashToken`, the hex SHA-256 of the raw token, so a token never sits in memory as a key. `MemoryTokenCache` is the default: bounded by `max` (default 10000), LRU through `Map` insertion order, TTL checked on read, and it clones entries on the way in and out so a caller mutating a result cannot change what is cached. |
 | `src/error/`             | `VouchrError` (carries a `VouchrErrorCode` and the original failure as `cause`) and `isVouchrError`, which checks the `Symbol.for('vouchr.error')` marker rather than `instanceof`, so it still matches when two copies of the package are installed. Every error `verify` throws is a `VouchrError`. |
 | `src/token/`             | Strict token parsing. `isCompactToken` accepts exactly three base64url segments (no padding, no whitespace); `parseToken` checks that first, then decodes header and claims with jose and maps any failure to `TOKEN_MALFORMED`. It verifies nothing: callers use it to pick an issuer before any key fetch. |
 | `test/vitest.config.ts`  | Test include glob and v8 coverage thresholds. Referenced explicitly by the npm scripts.            |

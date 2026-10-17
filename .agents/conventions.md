@@ -35,7 +35,7 @@ The three `@tada5hi/*` config packages are the source of truth for style, TS, an
 ## File Organization
 
 - `src/index.ts` is the public barrel. Anything not re-exported from it is internal and never published.
-- Each module is a folder under `src/` (`src/error/`, `src/token/`) holding `module.ts` (implementation), `types.ts` (exported types), optionally `constants.ts`, and an `index.ts` barrel; `src/index.ts` re-exports the folder barrels.
+- Each module is a folder under `src/` (`src/cache/`, `src/error/`, `src/token/`) holding `module.ts` (implementation), `types.ts` (exported types), optionally `constants.ts`, and an `index.ts` barrel; `src/index.ts` re-exports the folder barrels.
 - Exported types (interfaces, type aliases) belong in a `types.ts` next to the implementation, re-exported through the nearest barrel.
 - Tests mirror the `src/` path under `test/unit/` — see [testing](testing.md).
 
