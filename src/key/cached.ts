@@ -12,10 +12,14 @@ export function cachedKeys(
 ) : KeySource {
     const ttl = options.ttl ?? 300;
     const timeout = options.timeout ?? 10;
-    const max = Math.max(1, options.max ?? 100);
+    const max = options.max ?? 100;
 
     if (!Number.isFinite(ttl) || ttl < 0) {
         throw new TypeError('The key cache ttl must be a finite, non-negative number of seconds.');
+    }
+
+    if (!Number.isSafeInteger(max) || max < 1) {
+        throw new TypeError('The key cache max must be an integer of at least 1.');
     }
 
     // setTimeout clamps a delay above 2^31 - 1 ms to 1 ms

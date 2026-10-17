@@ -67,6 +67,13 @@ describe('src/cache', () => {
         expect(await cache.get('b')).toBeDefined();
     });
 
+    it('should refuse a max that is not a positive integer', () => {
+        for (const max of [NaN, Infinity, 0, -1, 1.5]) {
+            expect(() => new MemoryTokenCache({ max })).toThrow(TypeError);
+        }
+        expect(() => new MemoryTokenCache({ max: 1 })).not.toThrow();
+    });
+
     it('should not let a caller mutate a stored entry', async () => {
         const cache = new MemoryTokenCache();
         const entry = createEntry('a');

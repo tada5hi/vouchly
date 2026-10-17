@@ -267,6 +267,11 @@ describe('src/key', () => {
             expect(() => cachedKeys(load, { key, ttl: Infinity })).toThrow(TypeError);
             expect(() => cachedKeys(load, { key, timeout: 0 })).toThrow(TypeError);
             expect(() => cachedKeys(load, { key, timeout: 2_147_484 })).toThrow(TypeError);
+
+            for (const max of [NaN, Infinity, 0, -1, 1.5]) {
+                expect(() => cachedKeys(load, { key, max })).toThrow(TypeError);
+            }
+            expect(() => cachedKeys(load, { key, max: 1 })).not.toThrow();
         });
     });
 

@@ -155,7 +155,7 @@ const verifier = createVerifier({
 ```
 
 - The loader only builds URLs from your own `baseUrl`. Never fetch from a URL taken out of the token.
-- `cachedKeys` shares one in-flight load per cache key, keeps a key for `ttl` seconds (default 300), gives up after `timeout` seconds (default 10) and holds at most `max` keys (default 100). A failed load is never cached.
+- `cachedKeys` shares one in-flight load per cache key, keeps a key for `ttl` seconds (default 300), gives up after `timeout` seconds (default 10) and holds at most `max` keys (default 100, an integer of at least 1). A failed load is never cached.
 - Whatever a key source returns still passes the key policy: a JWK with `kty: oct`, a `use` other than `sig`, or an RSA key under 2048 bits fails as `key_unavailable`.
 
 ### Key sources
@@ -216,7 +216,7 @@ const { claims } = await verifier.verify(token, {
 
 ### Caching
 
-By default each verifier keeps a `MemoryTokenCache` with up to 10000 entries (least recently used first out). Pass `cache: false` to turn it off, or your own `ITokenCache` to share results between processes:
+By default each verifier keeps a `MemoryTokenCache` with up to 10000 entries (least recently used first out; `max` must be an integer of at least 1). Pass `cache: false` to turn it off, or your own `ITokenCache` to share results between processes:
 
 ```ts
 import type { ITokenCache, TokenCacheEntry } from 'vouchr';
