@@ -63,7 +63,7 @@ Commits follow **[Conventional Commits](https://www.conventionalcommits.org)** �
 [optional footer(s)]
 ```
 
-- `fix:` → patch bump. `feat:` → minor bump. `!` or a `BREAKING CHANGE:` footer → minor while pre-1.0 (`bump-minor-pre-major` is set), major afterwards.
+- vouchr is pre-1.0 and releases start at `0.1.0` (`initial-version`). While below 1.0: `fix:` and `feat:` → patch bump (`bump-patch-for-minor-pre-major`), `!` or a `BREAKING CHANGE:` footer → minor bump (`bump-minor-pre-major`). 1.0.0 is cut deliberately with a `Release-As: 1.0.0` footer, never by an ordinary commit.
 - `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `test:` → no release.
 - Dependabot is configured to use `fix` for production deps and `build` for dev deps, with the scope included — match that when bumping dependencies by hand (e.g. `build(deps-dev): bump vitest to v4`).
 
@@ -94,7 +94,7 @@ Automated by `.github/workflows/release.yml` on every push to `master`:
 2. Merging that PR creates the git tag (`v`-prefixed, no component prefix) and a GitHub release.
 3. On that same run, `releases_created == 'true'` gates checkout → install → build → **publish** via `tada5hi/monoship@v2`.
 
-Config lives in `release-please-config.json` (`release-type: node`, `include-v-in-tag: true`, `bump-minor-pre-major: true`). Releases are never cut by hand.
+Config lives in `release-please-config.json` (`release-type: node`, `include-v-in-tag: true`, `bump-minor-pre-major: true`, `bump-patch-for-minor-pre-major: true`, `initial-version: 0.1.0`). Releases are never cut by hand.
 
 ## CI/CD
 
