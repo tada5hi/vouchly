@@ -5,13 +5,19 @@ import type { VouchlyErrorOptions } from './types';
 export class VouchlyError extends Error {
     readonly code: VouchlyErrorCode;
 
+    readonly status?: number;
+
     readonly [VOUCHLY_ERROR_MARKER] = true;
 
     constructor(code: VouchlyErrorCode, message?: string, options?: VouchlyErrorOptions) {
-        super(message || code, options);
+        super(message || code, typeof options?.cause === 'undefined' ? undefined : { cause: options.cause });
 
         this.name = 'VouchlyError';
         this.code = code;
+
+        if (typeof options?.status === 'number') {
+            this.status = options.status;
+        }
     }
 }
 

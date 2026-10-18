@@ -1,12 +1,24 @@
 import type { JWTPayload } from 'jose';
 import type { KeySource } from '../key';
 
+export type IntrospectionAuthorizationContext = {
+    /**
+     * true when the previous attempt was answered with 401.
+     */
+    retry: boolean,
+};
+
 export type IntrospectionOptions = {
     /**
      * Default: the issuer's discovered introspection_endpoint.
      */
     endpoint?: string,
-    authorization?: { clientId: string, clientSecret: string } | (() => string | Promise<string>),
+    /**
+     * Client credentials (sent as HTTP Basic), or a function returning the
+     * whole Authorization header value. After a 401 a function is called
+     * again with `retry: true` and the request is repeated once.
+     */
+    authorization?: { clientId: string, clientSecret: string } | ((context: IntrospectionAuthorizationContext) => string | Promise<string>),
     /**
      * Upper bound, in seconds, for caching an introspection result.
      */
