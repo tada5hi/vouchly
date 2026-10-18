@@ -1,6 +1,6 @@
 {
     "name": "vouchly",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "type": "module",
     "description": "Verify OAuth2 and OIDC tokens against trusted issuers: JWT, introspection and certificate-bound tokens, on any Web runtime.",
     "author": {
