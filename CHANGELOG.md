@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/tada5hi/vouchly/compare/v0.1.0...v0.1.1) (2026-10-18)
+
+
+### Features
+
+* **introspection:** retry once with fresh authorization after a 401 ([#6](https://github.com/tada5hi/vouchly/issues/6)) ([2916b0b](https://github.com/tada5hi/vouchly/commit/2916b0bfd321af694efb749aed0dc177047d5b7c))
+
 ## 0.1.0 (2026-10-18)
 
 
