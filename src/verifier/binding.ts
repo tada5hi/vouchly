@@ -1,5 +1,5 @@
 import type { JWTPayload } from 'jose';
-import { VouchrError, VouchrErrorCode } from '../error';
+import { VouchlyError, VouchlyErrorCode } from '../error';
 import type { VerifyOptions } from './types';
 
 /**
@@ -22,8 +22,8 @@ export function assertCertificateBinding(claims: JWTPayload, thumbprint: string 
         typeof thumbprint !== 'string' ||
         thumbprint !== expected
     ) {
-        throw new VouchrError(
-            VouchrErrorCode.BINDING_MISMATCH,
+        throw new VouchlyError(
+            VouchlyErrorCode.BINDING_MISMATCH,
             'The token is bound to a certificate that was not presented.',
         );
     }
@@ -52,8 +52,8 @@ export async function resolveCertificateBinding(
         try {
             thumbprint = await options.certificateThumbprint();
         } catch (e) {
-            throw new VouchrError(
-                VouchrErrorCode.BINDING_MISMATCH,
+            throw new VouchlyError(
+                VouchlyErrorCode.BINDING_MISMATCH,
                 'The certificate thumbprint could not be resolved.',
                 { cause: e },
             );

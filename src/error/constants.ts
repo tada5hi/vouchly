@@ -1,4 +1,4 @@
-export enum VouchrErrorCode {
+export enum VouchlyErrorCode {
     TOKEN_MALFORMED = 'token_malformed',
     TOKEN_EXPIRED = 'token_expired',
     TOKEN_INACTIVE = 'token_inactive',
@@ -10,4 +10,4 @@ export enum VouchrErrorCode {
     BINDING_MISMATCH = 'binding_mismatch',
 }
 
-export const VOUCHR_ERROR_MARKER = Symbol.for('vouchr.error');
+export const VOUCHLY_ERROR_MARKER = Symbol.for('vouchly.error');

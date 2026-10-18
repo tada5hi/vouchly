@@ -1,24 +1,24 @@
-import type { VouchrErrorCode } from './constants';
-import { VOUCHR_ERROR_MARKER } from './constants';
-import type { VouchrErrorOptions } from './types';
+import type { VouchlyErrorCode } from './constants';
+import { VOUCHLY_ERROR_MARKER } from './constants';
+import type { VouchlyErrorOptions } from './types';
 
-export class VouchrError extends Error {
-    readonly code: VouchrErrorCode;
+export class VouchlyError extends Error {
+    readonly code: VouchlyErrorCode;
 
-    readonly [VOUCHR_ERROR_MARKER] = true;
+    readonly [VOUCHLY_ERROR_MARKER] = true;
 
-    constructor(code: VouchrErrorCode, message?: string, options?: VouchrErrorOptions) {
+    constructor(code: VouchlyErrorCode, message?: string, options?: VouchlyErrorOptions) {
         super(message || code, options);
 
-        this.name = 'VouchrError';
+        this.name = 'VouchlyError';
         this.code = code;
     }
 }
 
-export function isVouchrError(input: unknown): input is VouchrError {
+export function isVouchlyError(input: unknown): input is VouchlyError {
     if (typeof input !== 'object' || input === null) {
         return false;
     }
 
-    return (input as Record<symbol, unknown>)[VOUCHR_ERROR_MARKER] === true;
+    return (input as Record<symbol, unknown>)[VOUCHLY_ERROR_MARKER] === true;
 }

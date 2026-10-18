@@ -63,7 +63,7 @@ Commits follow **[Conventional Commits](https://www.conventionalcommits.org)** �
 [optional footer(s)]
 ```
 
-- vouchr is pre-1.0 and releases start at `0.1.0` (`initial-version`). While below 1.0: `fix:` and `feat:` → patch bump (`bump-patch-for-minor-pre-major`), `!` or a `BREAKING CHANGE:` footer → minor bump (`bump-minor-pre-major`). 1.0.0 is cut deliberately with a `Release-As: 1.0.0` footer, never by an ordinary commit.
+- vouchly is pre-1.0 and releases start at `0.1.0` (`initial-version`). While below 1.0: `fix:` and `feat:` → patch bump (`bump-patch-for-minor-pre-major`), `!` or a `BREAKING CHANGE:` footer → minor bump (`bump-minor-pre-major`). 1.0.0 is cut deliberately with a `Release-As: 1.0.0` footer, never by an ordinary commit.
 - `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `test:` → no release.
 - Dependabot is configured to use `fix` for production deps and `build` for dev deps, with the scope included — match that when bumping dependencies by hand (e.g. `build(deps-dev): bump vitest to v4`).
 

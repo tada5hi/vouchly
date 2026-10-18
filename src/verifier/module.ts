@@ -2,7 +2,7 @@ import type { CryptoKey, JWTPayload } from 'jose';
 import { errors, jwtVerify } from 'jose';
 import type { ITokenCache, TokenCacheEntry } from '../cache';
 import { MemoryTokenCache, hashToken } from '../cache';
-import { VouchrError, VouchrErrorCode, isVouchrError } from '../error';
+import { VouchlyError, VouchlyErrorCode, isVouchlyError } from '../error';
 import type { Issuer } from '../issuer';
 import { matchIssuer, selectIssuer } from '../issuer';
 import { introspect } from '../introspection';
@@ -65,19 +65,19 @@ function deriveAlgorithms(key: CryptoKey) : string[] {
     }
 }
 
-function mapJoseError(e: unknown) : VouchrError {
-    if (isVouchrError(e)) {
+function mapJoseError(e: unknown) : VouchlyError {
+    if (isVouchlyError(e)) {
         return e;
     }
 
     const message = e instanceof Error && e.message ? e.message : undefined;
 
     if (e instanceof errors.JWTExpired) {
-        return new VouchrError(VouchrErrorCode.TOKEN_EXPIRED, message, { cause: e });
+        return new VouchlyError(VouchlyErrorCode.TOKEN_EXPIRED, message, { cause: e });
     }
 
     if (e instanceof errors.JWSSignatureVerificationFailed) {
-        return new VouchrError(VouchrErrorCode.SIGNATURE_INVALID, message, { cause: e });
+        return new VouchlyError(VouchlyErrorCode.SIGNATURE_INVALID, message, { cause: e });
     }
 
     if (
@@ -85,10 +85,10 @@ function mapJoseError(e: unknown) : VouchrError {
         e instanceof errors.JOSEAlgNotAllowed ||
         e instanceof errors.JWTInvalid
     ) {
-        return new VouchrError(VouchrErrorCode.CLAIM_INVALID, message, { cause: e });
+        return new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, message, { cause: e });
     }
 
-    return new VouchrError(VouchrErrorCode.SIGNATURE_INVALID, message, { cause: e });
+    return new VouchlyError(VouchlyErrorCode.SIGNATURE_INVALID, message, { cause: e });
 }
 
 function assertAudience(issuer: Issuer, claims: JWTPayload) : void {
@@ -99,7 +99,7 @@ function assertAudience(issuer: Issuer, claims: JWTPayload) : void {
     const expected = Array.isArray(issuer.audience) ? issuer.audience : [issuer.audience];
     const actual = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
     if (actual.every((value) => typeof value !== 'string' || !expected.includes(value))) {
-        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token audience is not accepted.');
+        throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The token audience is not accepted.');
     }
 }
 
@@ -115,7 +115,7 @@ function normalizeTyp(value: string) : string {
 function assertLocalClaims(issuer: Issuer, entry: TokenCacheEntry) : void {
     for (const claim of issuer.requiredClaims ?? ['exp']) {
         if (!(claim in entry.claims)) {
-            throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, `The token has no "${claim}" claim.`);
+            throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, `The token has no "${claim}" claim.`);
         }
     }
 
@@ -123,19 +123,19 @@ function assertLocalClaims(issuer: Issuer, entry: TokenCacheEntry) : void {
         typeof issuer.typ === 'string' &&
         (typeof entry.typ !== 'string' || normalizeTyp(entry.typ) !== normalizeTyp(issuer.typ))
     ) {
-        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token typ is not accepted.');
+        throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The token typ is not accepted.');
     }
 
     if (
         issuer.algorithms &&
         (typeof entry.alg !== 'string' || !issuer.algorithms.includes(entry.alg))
     ) {
-        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token algorithm is not accepted.');
+        throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The token algorithm is not accepted.');
     }
 
     const { nbf } = entry.claims;
     if (typeof nbf === 'number' && nbf > (Date.now() / 1000) + (issuer.clockTolerance ?? 0)) {
-        throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The token is not yet valid.');
+        throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The token is not yet valid.');
     }
 }
 
@@ -221,7 +221,7 @@ export class Verifier implements IVerifier {
     async verify(token: string, options: VerifyOptions = {}) : Promise<VerifyResult> {
         const compact = typeof token === 'string' && isCompactToken(token);
         if (!compact && (!this.opaque || typeof token !== 'string' || token.length === 0)) {
-            throw new VouchrError(VouchrErrorCode.TOKEN_MALFORMED, 'The token is not a compact JWS.');
+            throw new VouchlyError(VouchlyErrorCode.TOKEN_MALFORMED, 'The token is not a compact JWS.');
         }
 
         const parsed = compact ? parseToken(token) : undefined;
@@ -288,7 +288,7 @@ export class Verifier implements IVerifier {
     protected selectRecord(token: ParsedToken) : IssuerRecord {
         const index = selectIssuer(this.records.map((record) => record.issuer), token.claims);
         if (index === -1) {
-            throw new VouchrError(VouchrErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
+            throw new VouchlyError(VouchlyErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
         }
 
         return this.records[index]!;
@@ -305,7 +305,7 @@ export class Verifier implements IVerifier {
 
         const algorithms = issuer.algorithms ?? deriveAlgorithms(key);
         if (algorithms.length === 0) {
-            throw new VouchrError(VouchrErrorCode.KEY_UNAVAILABLE, 'The verification key has no supported algorithm.');
+            throw new VouchlyError(VouchlyErrorCode.KEY_UNAVAILABLE, 'The verification key has no supported algorithm.');
         }
 
         let payload : JWTPayload;
@@ -337,11 +337,11 @@ export class Verifier implements IVerifier {
         try {
             passed = await issuer.claims(structuredClone(claims)) === true;
         } catch (e) {
-            throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The claims predicate failed.', { cause: e });
+            throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The claims predicate failed.', { cause: e });
         }
 
         if (!passed) {
-            throw new VouchrError(VouchrErrorCode.CLAIM_INVALID, 'The claims predicate refused the token.');
+            throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The claims predicate refused the token.');
         }
     }
 
@@ -423,7 +423,7 @@ export class Verifier implements IVerifier {
 
         if (source === 'local') {
             if (!matchIssuer(record.issuer, entry.claims)) {
-                throw new VouchrError(VouchrErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
+                throw new VouchlyError(VouchlyErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
             }
 
             assertLocalClaims(record.issuer, entry);
@@ -435,7 +435,7 @@ export class Verifier implements IVerifier {
             typeof exp === 'number' &&
             exp <= (Date.now() / 1000) - (record.issuer.clockTolerance ?? 0)
         ) {
-            throw new VouchrError(VouchrErrorCode.TOKEN_EXPIRED, 'The token has expired.');
+            throw new VouchlyError(VouchlyErrorCode.TOKEN_EXPIRED, 'The token has expired.');
         }
 
         assertAudience(record.issuer, entry.claims);

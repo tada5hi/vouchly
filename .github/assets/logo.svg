@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="vo-title">
-    <title id="vo-title">vouchr: three token segments, vouched for by a seal</title>
+    <title id="vo-title">vouchly: three token segments, vouched for by a seal</title>
     <defs>
         <linearGradient id="vo-tile" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
             <stop offset="0" stop-color="#0E9F8F" stop-opacity=".22"/>

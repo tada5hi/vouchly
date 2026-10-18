@@ -1,6 +1,6 @@
 <svg width="960" height="352" viewBox="0 0 960 352" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vv-title vv-desc">
     <title id="vv-title">What verify(token) does, step by step</title>
-    <desc id="vv-desc">verify(token) parses the token strictly, looks up its SHA-256 in the token cache, selects a trusted issuer from the unverified iss claim, verifies the token locally with the issuer's key source or by RFC 7662 introspection, and finally checks the RFC 8705 certificate binding. A cache hit skips the key lookup and the signature, not the verifier's claim rules, then goes on to the binding check. Each step fails with its own VouchrError code: token_malformed, issuer_untrusted, key_unavailable or signature_invalid or claim_invalid or introspection_failed, and binding_mismatch. Nothing is fetched before an issuer is selected.</desc>
+    <desc id="vv-desc">verify(token) parses the token strictly, looks up its SHA-256 in the token cache, selects a trusted issuer from the unverified iss claim, verifies the token locally with the issuer's key source or by RFC 7662 introspection, and finally checks the RFC 8705 certificate binding. A cache hit skips the key lookup and the signature, not the verifier's claim rules, then goes on to the binding check. Each step fails with its own VouchlyError code: token_malformed, issuer_untrusted, key_unavailable or signature_invalid or claim_invalid or introspection_failed, and binding_mismatch. Nothing is fetched before an issuer is selected.</desc>
 
     <style>
         :root {

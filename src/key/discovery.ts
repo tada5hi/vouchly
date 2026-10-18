@@ -1,6 +1,6 @@
 import type { DiscoveryOptions } from '../discovery';
 import { fetchProviderMetadata } from '../discovery';
-import { VouchrError, VouchrErrorCode } from '../error';
+import { VouchlyError, VouchlyErrorCode } from '../error';
 import { jwks } from './jwks';
 import type { KeySource } from './types';
 
@@ -21,8 +21,8 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
     return async (context) => {
         const { issuer } = context.issuer;
         if (typeof issuer !== 'string') {
-            throw new VouchrError(
-                VouchrErrorCode.KEY_UNAVAILABLE,
+            throw new VouchlyError(
+                VouchlyErrorCode.KEY_UNAVAILABLE,
                 'Discovery needs a configured issuer string, a function issuer cannot be discovered.',
             );
         }
@@ -32,12 +32,12 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
             metadata = await fetchProviderMetadata(issuer, context.fetch, options);
         } catch (e) {
             const message = e instanceof Error && e.message ? e.message : 'The provider metadata is unavailable.';
-            throw new VouchrError(VouchrErrorCode.KEY_UNAVAILABLE, message, { cause: e });
+            throw new VouchlyError(VouchlyErrorCode.KEY_UNAVAILABLE, message, { cause: e });
         }
 
         const { jwks_uri: url } = metadata;
         if (!url) {
-            throw new VouchrError(VouchrErrorCode.KEY_UNAVAILABLE, 'The provider metadata has no jwks_uri.');
+            throw new VouchlyError(VouchlyErrorCode.KEY_UNAVAILABLE, 'The provider metadata has no jwks_uri.');
         }
 
         let source = sources.get(url);

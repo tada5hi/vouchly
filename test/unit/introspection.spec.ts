@@ -9,10 +9,10 @@ import {
 import type { Issuer, VerifierOptions } from '../../src';
 import {
     MemoryTokenCache,
-    VouchrErrorCode,
+    VouchlyErrorCode,
     createVerifier,
     introspect,
-    isVouchrError,
+    isVouchlyError,
 } from '../../src';
 
 const ISSUER = 'https://issuer.example';
@@ -92,7 +92,7 @@ function verifier(stub: Stub, issuer: Issuer = introspectionIssuer(), options: P
     });
 }
 
-async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) : Promise<unknown> {
+async function expectCode(promise: Promise<unknown>, code: VouchlyErrorCode) : Promise<unknown> {
     let error : unknown;
     try {
         await promise;
@@ -100,8 +100,8 @@ async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) : Pr
         error = e;
     }
 
-    expect(isVouchrError(error)).toBe(true);
-    expect((error as { code: VouchrErrorCode }).code).toBe(code);
+    expect(isVouchlyError(error)).toBe(true);
+    expect((error as { code: VouchlyErrorCode }).code).toBe(code);
 
     return error;
 }
@@ -168,13 +168,13 @@ describe('src/introspection', () => {
     it('should refuse an inactive token', async () => {
         const stub = createStub(() => Response.json({ active: false }));
 
-        await expectCode(verifier(stub).verify(JWT), VouchrErrorCode.TOKEN_INACTIVE);
+        await expectCode(verifier(stub).verify(JWT), VouchlyErrorCode.TOKEN_INACTIVE);
     });
 
     it('should refuse a non-2xx answer without echoing its body', async () => {
         const stub = createStub(() => new Response('internal secret detail', { status: 500 }));
 
-        const error = await expectCode(verifier(stub).verify(JWT), VouchrErrorCode.INTROSPECTION_FAILED);
+        const error = await expectCode(verifier(stub).verify(JWT), VouchlyErrorCode.INTROSPECTION_FAILED);
         expect((error as Error).message).toContain('500');
         expect((error as Error).message).not.toContain('internal secret detail');
     });
@@ -185,7 +185,7 @@ describe('src/introspection', () => {
             headers: { 'content-type': 'text/html' },
         }));
 
-        await expectCode(verifier(stub).verify(JWT), VouchrErrorCode.INTROSPECTION_FAILED);
+        await expectCode(verifier(stub).verify(JWT), VouchlyErrorCode.INTROSPECTION_FAILED);
     });
 
     it('should refuse a fetch failure', async () => {
@@ -193,7 +193,7 @@ describe('src/introspection', () => {
             throw new TypeError('fetch failed');
         });
 
-        const error = await expectCode(verifier(stub).verify(JWT), VouchrErrorCode.INTROSPECTION_FAILED);
+        const error = await expectCode(verifier(stub).verify(JWT), VouchlyErrorCode.INTROSPECTION_FAILED);
         expect((error as Error).cause).toBeInstanceOf(TypeError);
     });
 
@@ -207,7 +207,7 @@ describe('src/introspection', () => {
                     throw new Error('no token');
                 },
             },
-        })).verify(JWT), VouchrErrorCode.INTROSPECTION_FAILED);
+        })).verify(JWT), VouchlyErrorCode.INTROSPECTION_FAILED);
         expect(stub.requests).toHaveLength(0);
     });
 
@@ -262,14 +262,14 @@ describe('src/introspection', () => {
 
         await expectCode(
             verifier(discovered, introspectionIssuer({ introspection: {} })).verify(JWT),
-            VouchrErrorCode.INTROSPECTION_FAILED,
+            VouchlyErrorCode.INTROSPECTION_FAILED,
         );
         expect(discovered.requests).toHaveLength(1);
 
         const unmatched = createStub(activeResponse());
         await expectCode(
             introspect(JWT, introspectionIssuer({ issuer: () => true, introspection: {} }), unmatched.fetch),
-            VouchrErrorCode.INTROSPECTION_FAILED,
+            VouchlyErrorCode.INTROSPECTION_FAILED,
         );
         expect(unmatched.requests).toHaveLength(0);
     });
@@ -281,10 +281,10 @@ describe('src/introspection', () => {
         await expect(passing.verify(JWT)).resolves.toBeDefined();
 
         const wrongAudience = verifier(stub, introspectionIssuer({ audience: 'other' }), { cache: false });
-        await expectCode(wrongAudience.verify(JWT), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(wrongAudience.verify(JWT), VouchlyErrorCode.CLAIM_INVALID);
 
         const refused = verifier(stub, introspectionIssuer({ claims: (claims) => claims.scope === 'write' }), { cache: false });
-        await expectCode(refused.verify(JWT), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(refused.verify(JWT), VouchlyErrorCode.CLAIM_INVALID);
     });
 
     it('should cache no longer than maxCacheTTL', async () => {
@@ -347,7 +347,7 @@ describe('src/introspection', () => {
         await instance.verify(JWT);
 
         vi.setSystemTime(1_800_000_002_000);
-        await expectCode(instance.verify(JWT), VouchrErrorCode.TOKEN_EXPIRED);
+        await expectCode(instance.verify(JWT), VouchlyErrorCode.TOKEN_EXPIRED);
         expect(stub.requests).toHaveLength(1);
     });
 
@@ -358,7 +358,7 @@ describe('src/introspection', () => {
         expect(result.source).toBe('remote');
         expect(stub.requests[0]!.body).toBe('token=abc123');
 
-        await expectCode(verifier(stub).verify('abc123'), VouchrErrorCode.TOKEN_MALFORMED);
+        await expectCode(verifier(stub).verify('abc123'), VouchlyErrorCode.TOKEN_MALFORMED);
         expect(stub.requests).toHaveLength(1);
     });
 
@@ -366,12 +366,12 @@ describe('src/introspection', () => {
         const stub = createStub(activeResponse({ cnf: { 'x5t#S256': THUMBPRINT } }));
         const instance = verifier(stub);
 
-        await expectCode(instance.verify(JWT), VouchrErrorCode.BINDING_MISMATCH);
+        await expectCode(instance.verify(JWT), VouchlyErrorCode.BINDING_MISMATCH);
 
         const result = await instance.verify(JWT, { certificateThumbprint: THUMBPRINT });
         expect(result.claims.cnf).toEqual({ 'x5t#S256': THUMBPRINT });
 
-        await expectCode(instance.verify(JWT, { certificateThumbprint: 'wrong' }), VouchrErrorCode.BINDING_MISMATCH);
+        await expectCode(instance.verify(JWT, { certificateThumbprint: 'wrong' }), VouchlyErrorCode.BINDING_MISMATCH);
         expect(stub.requests).toHaveLength(1);
     });
 
@@ -390,8 +390,8 @@ describe('src/introspection', () => {
         const stub = createStub(activeResponse());
         const instance = verifier(stub);
 
-        await expectCode(instance.verify(bound), VouchrErrorCode.BINDING_MISMATCH);
-        await expectCode(instance.verify(bound), VouchrErrorCode.BINDING_MISMATCH);
+        await expectCode(instance.verify(bound), VouchlyErrorCode.BINDING_MISMATCH);
+        await expectCode(instance.verify(bound), VouchlyErrorCode.BINDING_MISMATCH);
 
         const result = await instance.verify(bound, { certificateThumbprint: THUMBPRINT });
         expect(result.claims.cnf).toBeUndefined();
@@ -400,7 +400,7 @@ describe('src/introspection', () => {
         const conflicting = createStub(activeResponse({ cnf: { 'x5t#S256': 'other' } }));
         await expectCode(
             verifier(conflicting).verify(bound, { certificateThumbprint: THUMBPRINT }),
-            VouchrErrorCode.BINDING_MISMATCH,
+            VouchlyErrorCode.BINDING_MISMATCH,
         );
     });
 

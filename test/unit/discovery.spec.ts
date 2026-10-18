@@ -9,11 +9,11 @@ import {
 } from 'vitest';
 import type { Issuer, KeySourceContext } from '../../src';
 import {
-    VouchrErrorCode,
+    VouchlyErrorCode,
     createVerifier,
     discovery,
     fetchProviderMetadata,
-    isVouchrError,
+    isVouchlyError,
     parseToken,
     resolveVerificationKey,
 } from '../../src';
@@ -97,8 +97,8 @@ async function expectKeyUnavailable(promise: Promise<unknown>) {
         error = e;
     }
 
-    expect(isVouchrError(error)).toBe(true);
-    expect((error as { code: string }).code).toEqual(VouchrErrorCode.KEY_UNAVAILABLE);
+    expect(isVouchlyError(error)).toBe(true);
+    expect((error as { code: string }).code).toEqual(VouchlyErrorCode.KEY_UNAVAILABLE);
 }
 
 describe('src/discovery', () => {

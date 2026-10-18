@@ -7,10 +7,10 @@ import {
 } from 'vitest';
 import type { Verifier } from '../../src';
 import {
-    VouchrErrorCode,
+    VouchlyErrorCode,
     assertCertificateBinding,
     createVerifier,
-    isVouchrError,
+    isVouchlyError,
     staticKeys,
 } from '../../src';
 
@@ -47,8 +47,8 @@ async function expectMismatch(promise: Promise<unknown>) {
         error = e;
     }
 
-    expect(isVouchrError(error)).toBe(true);
-    expect((error as { code: VouchrErrorCode }).code).toBe(VouchrErrorCode.BINDING_MISMATCH);
+    expect(isVouchlyError(error)).toBe(true);
+    expect((error as { code: VouchlyErrorCode }).code).toBe(VouchlyErrorCode.BINDING_MISMATCH);
 }
 
 describe('src/verifier binding', () => {

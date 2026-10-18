@@ -6,9 +6,9 @@ import {
     it,
 } from 'vitest';
 import {
-    VouchrErrorCode,
+    VouchlyErrorCode,
     isCompactToken,
-    isVouchrError,
+    isVouchlyError,
     parseToken,
 } from '../../src';
 
@@ -30,8 +30,8 @@ function expectMalformed(input: string) {
         caught = e;
     }
 
-    expect(isVouchrError(caught)).toBe(true);
-    expect((caught as { code: string }).code).toBe(VouchrErrorCode.TOKEN_MALFORMED);
+    expect(isVouchlyError(caught)).toBe(true);
+    expect((caught as { code: string }).code).toBe(VouchlyErrorCode.TOKEN_MALFORMED);
 }
 
 describe('src/token', () => {

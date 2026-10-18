@@ -7,9 +7,9 @@ import {
 } from 'vitest';
 import type { KeySourceContext } from '../../src';
 import {
-    VouchrErrorCode,
+    VouchlyErrorCode,
     cachedKeys,
-    isVouchrError,
+    isVouchlyError,
     jwks,
     parseToken,
     resolveVerificationKey,
@@ -63,8 +63,8 @@ async function expectKeyUnavailable(promise: Promise<unknown>, message?: string)
         error = e;
     }
 
-    expect(isVouchrError(error)).toBe(true);
-    expect((error as { code: string }).code).toEqual(VouchrErrorCode.KEY_UNAVAILABLE);
+    expect(isVouchlyError(error)).toBe(true);
+    expect((error as { code: string }).code).toEqual(VouchlyErrorCode.KEY_UNAVAILABLE);
     if (message) {
         expect((error as Error).message).toContain(message);
     }
@@ -158,7 +158,7 @@ describe('src/key', () => {
                 error = e;
             }
 
-            expect((error as { code: string }).code).toEqual(VouchrErrorCode.KEY_UNAVAILABLE);
+            expect((error as { code: string }).code).toEqual(VouchlyErrorCode.KEY_UNAVAILABLE);
             expect((error as Error).cause).toBe(cause);
         });
     });

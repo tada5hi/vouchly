@@ -17,9 +17,9 @@ import type { Issuer, KeySource } from '../../src';
 import {
     MemoryTokenCache,
     Verifier,
-    VouchrErrorCode,
+    VouchlyErrorCode,
     createVerifier,
-    isVouchrError,
+    isVouchlyError,
     staticKeys,
 } from '../../src';
 
@@ -90,7 +90,7 @@ function countingKeys(keys: JWK[]) : { source: KeySource, calls: () => number } 
     };
 }
 
-async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) : Promise<unknown> {
+async function expectCode(promise: Promise<unknown>, code: VouchlyErrorCode) : Promise<unknown> {
     let error : unknown;
     try {
         await promise;
@@ -98,8 +98,8 @@ async function expectCode(promise: Promise<unknown>, code: VouchrErrorCode) : Pr
         error = e;
     }
 
-    expect(isVouchrError(error)).toBe(true);
-    expect((error as { code: VouchrErrorCode }).code).toBe(code);
+    expect(isVouchlyError(error)).toBe(true);
+    expect((error as { code: VouchlyErrorCode }).code).toBe(code);
 
     return error;
 }
@@ -136,7 +136,7 @@ describe('src/verifier', () => {
 
         await expectCode(
             verifier.verify(await sign(key, { claims: { iss: 'https://other.example' } })),
-            VouchrErrorCode.ISSUER_UNTRUSTED,
+            VouchlyErrorCode.ISSUER_UNTRUSTED,
         );
         expect(keys.calls()).toBe(0);
     });
@@ -171,7 +171,7 @@ describe('src/verifier', () => {
             ],
         });
 
-        await expectCode(verifier.verify(await sign(key)), VouchrErrorCode.ISSUER_UNTRUSTED);
+        await expectCode(verifier.verify(await sign(key)), VouchlyErrorCode.ISSUER_UNTRUSTED);
     });
 
     it('should enforce the claim rules', async () => {
@@ -186,11 +186,11 @@ describe('src/verifier', () => {
 
         await expectCode(
             verifier.verify(await sign(key, { claims: { aud: 'other' }, typ: 'at+jwt' })),
-            VouchrErrorCode.CLAIM_INVALID,
+            VouchlyErrorCode.CLAIM_INVALID,
         );
         await expectCode(
             verifier.verify(await sign(key, { claims: { aud: 'api' }, typ: 'JWT' })),
-            VouchrErrorCode.CLAIM_INVALID,
+            VouchlyErrorCode.CLAIM_INVALID,
         );
         await expectCode(
             verifier.verify(await sign(key, {
@@ -198,7 +198,7 @@ describe('src/verifier', () => {
                 typ: 'at+jwt', 
                 nbf: now() + 600, 
             })),
-            VouchrErrorCode.CLAIM_INVALID,
+            VouchlyErrorCode.CLAIM_INVALID,
         );
         await expectCode(
             verifier.verify(await sign(key, {
@@ -206,7 +206,7 @@ describe('src/verifier', () => {
                 typ: 'at+jwt', 
                 exp: now() - 60, 
             })),
-            VouchrErrorCode.TOKEN_EXPIRED,
+            VouchlyErrorCode.TOKEN_EXPIRED,
         );
         await expectCode(
             verifier.verify(await sign(key, {
@@ -214,7 +214,7 @@ describe('src/verifier', () => {
                 typ: 'at+jwt', 
                 exp: false, 
             })),
-            VouchrErrorCode.CLAIM_INVALID,
+            VouchlyErrorCode.CLAIM_INVALID,
         );
 
         const result = await verifier.verify(await sign(key, { claims: { aud: 'api' }, typ: 'at+jwt' }));
@@ -240,7 +240,7 @@ describe('src/verifier', () => {
         const other = await createSigningKey('k1');
         const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }] });
 
-        await expectCode(verifier.verify(await sign(other)), VouchrErrorCode.SIGNATURE_INVALID);
+        await expectCode(verifier.verify(await sign(other)), VouchlyErrorCode.SIGNATURE_INVALID);
     });
 
     it('should not accept alg none', async () => {
@@ -256,10 +256,10 @@ describe('src/verifier', () => {
             exp: now() + 3600, 
         }));
         // An empty signature segment is not a compact JWS at all.
-        await expectCode(verifier.verify(`${header}.${payload}.`), VouchrErrorCode.TOKEN_MALFORMED);
+        await expectCode(verifier.verify(`${header}.${payload}.`), VouchlyErrorCode.TOKEN_MALFORMED);
 
         // A non-empty one gets as far as jose, which refuses the algorithm.
-        const error = await expectCode(verifier.verify(`${header}.${payload}.AAAA`), VouchrErrorCode.CLAIM_INVALID);
+        const error = await expectCode(verifier.verify(`${header}.${payload}.AAAA`), VouchlyErrorCode.CLAIM_INVALID);
         expect((error as Error).cause).toBeInstanceOf(errors.JOSEAlgNotAllowed);
     });
 
@@ -275,7 +275,7 @@ describe('src/verifier', () => {
                 },
             ],
         });
-        await expectCode(verifier.verify(await sign(key)), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(verifier.verify(await sign(key)), VouchlyErrorCode.CLAIM_INVALID);
 
         const throwing = createVerifier({
             issuers: [
@@ -286,7 +286,7 @@ describe('src/verifier', () => {
                 },
             ],
         });
-        await expectCode(throwing.verify(await sign(key)), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(throwing.verify(await sign(key)), VouchlyErrorCode.CLAIM_INVALID);
     });
 
     it('should serve a second verify from the cache', async () => {
@@ -335,7 +335,7 @@ describe('src/verifier', () => {
         const token = await sign(key, { claims: { aud: 'service-a' } });
 
         await a.verify(token);
-        await expectCode(b.verify(token), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(b.verify(token), VouchlyErrorCode.CLAIM_INVALID);
     });
 
     it('should not serve another issuer from a shared cache', async () => {
@@ -354,7 +354,7 @@ describe('src/verifier', () => {
         const token = await sign(key);
 
         await a.verify(token);
-        await expectCode(b.verify(token), VouchrErrorCode.ISSUER_UNTRUSTED);
+        await expectCode(b.verify(token), VouchlyErrorCode.ISSUER_UNTRUSTED);
     });
 
     it('should re-apply the typ, required claims and claims predicate on a cache hit', async () => {
@@ -378,21 +378,21 @@ describe('src/verifier', () => {
             cache, 
             cacheNamespace: 'shared', 
         });
-        await expectCode(typ.verify(token), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(typ.verify(token), VouchlyErrorCode.CLAIM_INVALID);
 
         const required = createVerifier({
             issuers: [{ ...base, requiredClaims: ['exp', 'jti'] }], 
             cache, 
             cacheNamespace: 'shared', 
         });
-        await expectCode(required.verify(token), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(required.verify(token), VouchlyErrorCode.CLAIM_INVALID);
 
         const predicate = createVerifier({
             issuers: [{ ...base, claims: () => false }], 
             cache, 
             cacheNamespace: 'shared', 
         });
-        await expectCode(predicate.verify(token), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(predicate.verify(token), VouchlyErrorCode.CLAIM_INVALID);
 
         const same = createVerifier({
             issuers: [{ ...base, typ: 'jwt' }], 
@@ -475,7 +475,7 @@ describe('src/verifier', () => {
         const token = await sign(key);
 
         await a.verify(token);
-        await expectCode(b.verify(token), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(b.verify(token), VouchlyErrorCode.CLAIM_INVALID);
     });
 
     it('should re-apply nbf with the reading verifier\'s clock tolerance on a cache hit', async () => {
@@ -499,7 +499,7 @@ describe('src/verifier', () => {
         const token = await sign(key, { nbf: Math.floor(Date.now() / 1000) + 60 });
 
         await a.verify(token);
-        await expectCode(b.verify(token), VouchrErrorCode.CLAIM_INVALID);
+        await expectCode(b.verify(token), VouchlyErrorCode.CLAIM_INVALID);
     });
 
     it('should refuse a cached local token at its exp second', async () => {
@@ -513,7 +513,7 @@ describe('src/verifier', () => {
         await verifier.verify(token);
 
         vi.setSystemTime(1_800_000_010_000);
-        await expectCode(verifier.verify(token), VouchrErrorCode.TOKEN_EXPIRED);
+        await expectCode(verifier.verify(token), VouchlyErrorCode.TOKEN_EXPIRED);
     });
 
     it('should refuse an expired token served by a cache that rounds its ttl up', async () => {
@@ -536,7 +536,7 @@ describe('src/verifier', () => {
         await verifier.verify(token);
 
         vi.setSystemTime(1_800_000_010_000);
-        await expectCode(verifier.verify(token), VouchrErrorCode.TOKEN_EXPIRED);
+        await expectCode(verifier.verify(token), VouchlyErrorCode.TOKEN_EXPIRED);
         expect(keys.calls()).toBe(1);
     });
 
@@ -558,8 +558,8 @@ describe('src/verifier', () => {
         });
         const token = await sign(key);
 
-        await expectCode(verifier.verify(`${token}==`), VouchrErrorCode.TOKEN_MALFORMED);
-        await expectCode(verifier.verify(` ${token}`), VouchrErrorCode.TOKEN_MALFORMED);
+        await expectCode(verifier.verify(`${token}==`), VouchlyErrorCode.TOKEN_MALFORMED);
+        await expectCode(verifier.verify(` ${token}`), VouchlyErrorCode.TOKEN_MALFORMED);
         expect(keys.calls()).toBe(0);
         expect(writes).toHaveLength(0);
 
@@ -588,7 +588,7 @@ describe('src/verifier', () => {
         const key = await createSigningKey('k1');
         const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }] });
 
-        await expectCode(verifier.verify(await sign(key, { kid: 'unknown' })), VouchrErrorCode.KEY_UNAVAILABLE);
+        await expectCode(verifier.verify(await sign(key, { kid: 'unknown' })), VouchlyErrorCode.KEY_UNAVAILABLE);
     });
 
     it('should refuse misconfiguration at construction', () => {

@@ -1,24 +1,24 @@
 <p align="center">
-    <img src="https://raw.githubusercontent.com/tada5hi/vouchr/master/.github/assets/logo.svg" alt="" width="96" height="96">
+    <img src="https://raw.githubusercontent.com/tada5hi/vouchly/master/.github/assets/logo.svg" alt="" width="96" height="96">
 </p>
 
-<h1 align="center">vouchr</h1>
+<h1 align="center">vouchly</h1>
 
 <p align="center">
     <strong>Verify OAuth2 and OIDC tokens against trusted issuers: JWT, introspection and certificate-bound tokens, on any Web runtime.</strong>
 </p>
 
 <p align="center">
-    You list the issuers you trust. vouchr picks the right one per token, finds its key, checks the claims and tells you why a token was refused.
+    You list the issuers you trust. vouchly picks the right one per token, finds its key, checks the claims and tells you why a token was refused.
 </p>
 
 <p align="center">
-    <a href="https://npmjs.com/package/vouchr"><img src="https://badge.fury.io/js/vouchr.svg" alt="npm version"></a>
-    <a href="https://github.com/tada5hi/vouchr/actions/workflows/main.yml"><img src="https://github.com/tada5hi/vouchr/actions/workflows/main.yml/badge.svg" alt="CI"></a>
+    <a href="https://npmjs.com/package/vouchly"><img src="https://badge.fury.io/js/vouchly.svg" alt="npm version"></a>
+    <a href="https://github.com/tada5hi/vouchly/actions/workflows/main.yml"><img src="https://github.com/tada5hi/vouchly/actions/workflows/main.yml/badge.svg" alt="CI"></a>
 </p>
 
 <p align="center">
-    <a href="#why-vouchr">Why</a> ·
+    <a href="#why-vouchly">Why</a> ·
     <a href="#installation">Installation</a> ·
     <a href="#usage">Usage</a> ·
     <a href="#issuer-options">Options</a> ·
@@ -29,11 +29,11 @@
 
 ---
 
-## Why vouchr?
+## Why vouchly?
 
 A service that accepts tokens from more than one place (your own identity provider, GitHub Actions, a partner's OIDC provider) ends up writing the same code each time: decode the token, look at `iss`, find the JWKS for that issuer, refuse a key that should never verify anything, check `aud` and `exp`, maybe ask an introspection endpoint instead, cache the answer, and turn a dozen library errors into something an HTTP handler can map. Each of those steps has a well-known way to get it wrong.
 
-| Concern | Without it | With vouchr |
+| Concern | Without it | With vouchly |
 |---------|------------|-------------|
 | Which issuer? | Read `iss` yourself and branch | An allowlist of `Issuer` configs; an unknown `iss` fails with `issuer_untrusted` before any request goes out |
 | Where the keys come from | Wire `jwks_uri` per issuer by hand | `discovery()` reads it from the issuer's `/.well-known/openid-configuration`; `jwks()`, `staticKeys()` and `cachedKeys()` for everything else |
@@ -42,12 +42,12 @@ A service that accepts tokens from more than one place (your own identity provid
 | Opaque and revocable tokens | A second code path with its own HTTP client | `verification: 'remote'` per issuer (RFC 7662), with a cache bound you choose |
 | Certificate-bound tokens | Compare `cnf.x5t#S256` yourself, and remember it on cache hits | RFC 8705 binding checked on every call, cache hits included, failing closed |
 | Repeated verification | Cache the decoded payload and hope it expires | A bounded cache keyed by the token's SHA-256, never kept past `exp` |
-| Errors | jose errors, `TypeError`s, fetch failures | One `VouchrError` with one of nine codes, the original kept as `cause` |
+| Errors | jose errors, `TypeError`s, fetch failures | One `VouchlyError` with one of nine codes, the original kept as `cause` |
 
 The same verifier accepts tokens from GitHub Actions and from your own provider; each issuer keeps its own rules:
 
 ```ts
-import { createVerifier } from 'vouchr';
+import { createVerifier } from 'vouchly';
 
 const verifier = createVerifier({
     issuers: [
@@ -68,13 +68,13 @@ const { claims, issuer } = await verifier.verify(token);
 ```
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/tada5hi/vouchr/master/.github/assets/verify.svg" alt="verify(token) parses the token strictly, looks up its SHA-256 in the token cache, selects a trusted issuer from the unverified iss claim, verifies the token locally with the issuer's key source or by RFC 7662 introspection, and finally checks the RFC 8705 certificate binding. A cache hit skips the key lookup and the signature, not the verifier's claim rules, then goes on to the binding check. Each step fails with its own VouchrError code: token_malformed, issuer_untrusted, key_unavailable or signature_invalid or claim_invalid or introspection_failed, and binding_mismatch. Nothing is fetched before an issuer is selected." width="100%">
+    <img src="https://raw.githubusercontent.com/tada5hi/vouchly/master/.github/assets/verify.svg" alt="verify(token) parses the token strictly, looks up its SHA-256 in the token cache, selects a trusted issuer from the unverified iss claim, verifies the token locally with the issuer's key source or by RFC 7662 introspection, and finally checks the RFC 8705 certificate binding. A cache hit skips the key lookup and the signature, not the verifier's claim rules, then goes on to the binding check. Each step fails with its own VouchlyError code: token_malformed, issuer_untrusted, key_unavailable or signature_invalid or claim_invalid or introspection_failed, and binding_mismatch. Nothing is fetched before an issuer is selected." width="100%">
 </p>
 
 ## Installation
 
 ```bash
-npm install vouchr
+npm install vouchly
 ```
 
 - ESM only, with TypeScript declarations included.
@@ -88,7 +88,7 @@ npm install vouchr
 A string `issuer` is matched exactly against `iss`, and its keys are found through OIDC discovery. A `claims` predicate adds rules of your own; it runs after the signature and the standard claims were checked, so it only ever sees verified claims.
 
 ```ts
-import { createVerifier, isVouchrError } from 'vouchr';
+import { createVerifier, isVouchlyError } from 'vouchly';
 
 const verifier = createVerifier({
     issuers: [
@@ -106,7 +106,7 @@ try {
     const { claims } = await verifier.verify(token);
     console.log(`deploy requested by ${claims.actor}`);
 } catch (e) {
-    if (isVouchrError(e)) {
+    if (isVouchlyError(e)) {
         console.log(e.code); // e.g. 'claim_invalid'
     }
 
@@ -123,7 +123,7 @@ When issuers appear at runtime (one per tenant or realm), match `iss` with a fun
 
 ```ts
 import type { JWK } from 'jose';
-import { cachedKeys, createVerifier } from 'vouchr';
+import { cachedKeys, createVerifier } from 'vouchly';
 
 const baseUrl = 'https://auth.example.com';
 
@@ -174,7 +174,7 @@ A key source is any `(context) => Promise<CryptoKey | JWK>`; `context` carries t
 Set `verification: 'remote'` to ask the issuer about each token (RFC 7662) instead of checking a signature. This is the way to notice a revoked token before it expires, and the only way to accept opaque tokens.
 
 ```ts
-import { createVerifier } from 'vouchr';
+import { createVerifier } from 'vouchly';
 
 const verifier = createVerifier({
     issuers: [
@@ -219,8 +219,8 @@ const { claims } = await verifier.verify(token, {
 By default each verifier keeps its own `MemoryTokenCache` with up to 10000 entries (least recently used first out; `max` must be an integer of at least 1). Pass `cache: false` to turn it off, or your own `ITokenCache` to share results between processes, for example between replicas of one service. A cache you pass in needs a `cacheNamespace`, and every verifier using that namespace must have the same issuer configuration: a cache hit skips the key lookup and the signature check, so an entry is only as trustworthy as the configuration that wrote it.
 
 ```ts
-import type { ITokenCache, TokenCacheEntry } from 'vouchr';
-import { createVerifier } from 'vouchr';
+import type { ITokenCache, TokenCacheEntry } from 'vouchly';
+import { createVerifier } from 'vouchly';
 
 declare const redis: {
     get(key: string): Promise<string | null>,
@@ -229,12 +229,12 @@ declare const redis: {
 
 const cache: ITokenCache = {
     async get(key) {
-        const value = await redis.get(`vouchr:${key}`);
+        const value = await redis.get(`vouchly:${key}`);
         return value ? JSON.parse(value) as TokenCacheEntry : undefined;
     },
     async set(key, entry, ttl) {
         if (ttl > 0) {
-            await redis.set(`vouchr:${key}`, JSON.stringify(entry), { EX: Math.ceil(ttl) });
+            await redis.set(`vouchly:${key}`, JSON.stringify(entry), { EX: Math.ceil(ttl) });
         }
     },
 };
@@ -272,7 +272,7 @@ The verifier itself takes `issuers`, `cache` (`ITokenCache` or `false`), `cacheN
 
 ## Errors
 
-Every error `verify` throws is a `VouchrError` with a `code`. The underlying error, when there is one, is kept as `cause`.
+Every error `verify` throws is a `VouchlyError` with a `code`. The underlying error, when there is one, is kept as `cause`.
 
 | Code | When |
 |------|------|
@@ -286,7 +286,7 @@ Every error `verify` throws is a `VouchrError` with a `code`. The underlying err
 | `introspection_failed` | The introspection request failed, answered non-2xx, or did not answer a JSON object. |
 | `binding_mismatch` | The token is certificate-bound and the presented thumbprint does not match. |
 
-Use `isVouchrError(error)` rather than `instanceof`: it checks a `Symbol.for('vouchr.error')` marker, so it still matches when two copies of vouchr are installed.
+Use `isVouchlyError(error)` rather than `instanceof`: it checks a `Symbol.for('vouchly.error')` marker, so it still matches when two copies of vouchly are installed.
 
 ## API
 
@@ -301,7 +301,7 @@ Use `isVouchrError(error)` rather than `instanceof`: it checks a `Symbol.for('vo
 | `MemoryTokenCache`, `ITokenCache`, `hashToken` | class, interface, function | The default cache, the cache port and the key derivation. |
 | `parseToken`, `isCompactToken` | functions | Strict parsing without verification. |
 | `matchIssuer`, `selectIssuer` | functions | The issuer allowlist on its own. |
-| `VouchrError`, `VouchrErrorCode`, `isVouchrError` | class, enum, function | Errors. |
+| `VouchlyError`, `VouchlyErrorCode`, `isVouchlyError` | class, enum, function | Errors. |
 
 ## Notes
 
@@ -310,7 +310,7 @@ Use `isVouchrError(error)` rather than `instanceof`: it checks a `Symbol.for('vo
 - **Keys stay in process memory.** `CryptoKey`s cannot be serialised, so key caches (`jwks`, `discovery`, `cachedKeys`) are per process even when the token cache is shared.
 - **Key caches live on the key source instance.** Each `discovery()`, `jwks()` and `cachedKeys()` call creates its own cache, and a string issuer without `keys` gets a `discovery()` of its own per verifier. Discovery metadata is shared by every verifier using the default `fetch` (or the same `fetch` function), but the JWKS behind it is not. If you build verifiers at runtime (one per request, per tenant), create the key source once and pass the same instance to each of them, or every verifier fetches the keys again.
 - **Results are copies.** Every result, including a cache hit, is a fresh `structuredClone`; changing it does not change the cached entry.
-- **No permission model.** vouchr answers whether a token is genuine and which issuer it came from. Deciding what the caller may do is up to you.
+- **No permission model.** vouchly answers whether a token is genuine and which issuer it came from. Deciding what the caller may do is up to you.
 
 ## Contributing
 

@@ -1,8 +1,8 @@
 <!-- NOTE: Keep this file and all corresponding files in the .agents directory updated as the project evolves. When making architectural changes, adding new patterns, or discovering important conventions, update the relevant sections. -->
 
-# vouchr: Agent Guide
+# vouchly: Agent Guide
 
-vouchr verifies OAuth2 and OIDC tokens against a configured list of trusted issuers: signed JWTs (keys from OIDC discovery, a JWKS URL, static keys or a custom loader), RFC 7662 introspection, and RFC 8705 certificate-bound tokens. It runs on any Web runtime: `src/` uses Web APIs only (WebCrypto, `fetch`) and never imports `node:*`. Its only runtime dependency is `jose`.
+vouchly verifies OAuth2 and OIDC tokens against a configured list of trusted issuers: signed JWTs (keys from OIDC discovery, a JWKS URL, static keys or a custom loader), RFC 7662 introspection, and RFC 8705 certificate-bound tokens. It runs on any Web runtime: `src/` uses Web APIs only (WebCrypto, `fetch`) and never imports `node:*`. Its only runtime dependency is `jose`.
 
 It was extracted from authup's server adapters (`@authup/server-adapter-kit`) and will be consumed by them, but knows nothing about authup: authup is one configured issuer among others.
 

@@ -1,3 +1,3 @@
-export type VouchrErrorOptions = {
+export type VouchlyErrorOptions = {
     cause?: unknown,
 };

@@ -1,13 +1,13 @@
 import type { JWTPayload } from 'jose';
 import { fetchProviderMetadata } from '../discovery';
-import { VouchrError, VouchrErrorCode, isVouchrError } from '../error';
+import { VouchlyError, VouchlyErrorCode, isVouchlyError } from '../error';
 import type { Issuer } from '../issuer';
 import type { IntrospectionResponse } from './types';
 
 const TIMEOUT = 10_000;
 
-function fail(message: string, cause?: unknown) : VouchrError {
-    return new VouchrError(VouchrErrorCode.INTROSPECTION_FAILED, message, typeof cause === 'undefined' ? undefined : { cause });
+function fail(message: string, cause?: unknown) : VouchlyError {
+    return new VouchlyError(VouchlyErrorCode.INTROSPECTION_FAILED, message, typeof cause === 'undefined' ? undefined : { cause });
 }
 
 /**
@@ -103,7 +103,7 @@ async function request(token: string, issuer: Issuer, fetchFn: typeof globalThis
     }
 
     if (body.active !== true) {
-        throw new VouchrError(VouchrErrorCode.TOKEN_INACTIVE, 'The token is not active.');
+        throw new VouchlyError(VouchlyErrorCode.TOKEN_INACTIVE, 'The token is not active.');
     }
 
     return body as JWTPayload;
@@ -121,7 +121,7 @@ export async function introspect(
     try {
         return await request(token, issuer, fetchFn);
     } catch (e) {
-        if (isVouchrError(e)) {
+        if (isVouchlyError(e)) {
             throw e;
         }
 

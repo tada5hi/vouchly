@@ -1,6 +1,6 @@
 import type { CryptoKey, JWK } from 'jose';
 import { importJWK } from 'jose';
-import { VouchrError, VouchrErrorCode, isVouchrError } from '../error';
+import { VouchlyError, VouchlyErrorCode, isVouchlyError } from '../error';
 import { assertCryptoKeyPolicy, assertJWKPolicy } from './policy';
 import type { KeySource, KeySourceContext } from './types';
 
@@ -30,13 +30,13 @@ async function resolve(source: KeySource, context: KeySourceContext) : Promise<C
 
 /**
  * Resolves the key a token is verified with. Every failure, including a key
- * the policy refuses, is a KEY_UNAVAILABLE VouchrError.
+ * the policy refuses, is a KEY_UNAVAILABLE VouchlyError.
  */
 export async function resolveVerificationKey(source: KeySource, context: KeySourceContext) : Promise<CryptoKey> {
     try {
         return await resolve(source, context);
     } catch (e) {
-        if (isVouchrError(e) && e.code === VouchrErrorCode.KEY_UNAVAILABLE) {
+        if (isVouchlyError(e) && e.code === VouchlyErrorCode.KEY_UNAVAILABLE) {
             throw e;
         }
 
@@ -44,6 +44,6 @@ export async function resolveVerificationKey(source: KeySource, context: KeySour
             `The verification key is unavailable: ${e.message}` :
             'The verification key is unavailable.';
 
-        throw new VouchrError(VouchrErrorCode.KEY_UNAVAILABLE, message, { cause: e });
+        throw new VouchlyError(VouchlyErrorCode.KEY_UNAVAILABLE, message, { cause: e });
     }
 }
