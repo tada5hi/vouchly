@@ -193,8 +193,8 @@ const verifier = createVerifier({
 ```
 
 - The endpoint is `introspection.endpoint`, else the `introspection_endpoint` discovered for a string `issuer`. A function issuer needs an explicit `endpoint`.
-- `authorization` is either client credentials, sent as HTTP Basic, or a function returning the whole `Authorization` header value (for a bearer token of your own).
-- `active` other than `true` fails as `token_inactive`; a failed request, a non-2xx answer or a body that is not a JSON object fails as `introspection_failed`.
+- `authorization` is either client credentials, sent as HTTP Basic, or a function returning the whole `Authorization` header value (for a bearer token of your own). The function receives `{ retry }`: after a `401` it is called again with `retry: true`, so it can mint a fresh token, and the request is repeated once. Client credentials are not retried.
+- `active` other than `true` fails as `token_inactive`; a failed request, a non-2xx answer or a body that is not a JSON object fails as `introspection_failed`. For a non-2xx answer the error carries the HTTP status as `error.status`.
 - The issuer's `audience` and `claims` predicate apply to the introspection response too.
 - `opaque` names the issuer that introspects tokens which are not JWTs at all. Without it, such a token fails as `token_malformed`.
 - A result is cached for the shorter of `exp - now` and `maxCacheTTL` seconds; with neither, it is not cached.
@@ -283,7 +283,7 @@ Every error `verify` throws is a `VouchlyError` with a `code`. The underlying er
 | `key_unavailable` | Discovery or the key fetch failed, no key matches the `kid`, or the key policy refused the key. |
 | `signature_invalid` | The signature does not verify. |
 | `claim_invalid` | `aud`, `iss`, `typ`, `nbf`, a required claim, the algorithm or the `claims` predicate. |
-| `introspection_failed` | The introspection request failed, answered non-2xx, or did not answer a JSON object. |
+| `introspection_failed` | The introspection request failed, answered non-2xx (`error.status` holds the status), or did not answer a JSON object. |
 | `binding_mismatch` | The token is certificate-bound and the presented thumbprint does not match. |
 
 Use `isVouchlyError(error)` rather than `instanceof`: it checks a `Symbol.for('vouchly.error')` marker, so it still matches when two copies of vouchly are installed.

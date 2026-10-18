@@ -41,7 +41,7 @@ async function resolveEndpoint(issuer: Issuer, fetchFn: typeof globalThis.fetch)
     return endpoint;
 }
 
-async function resolveAuthorization(issuer: Issuer) : Promise<string | undefined> {
+async function resolveAuthorization(issuer: Issuer, retry: boolean) : Promise<string | undefined> {
     const authorization = issuer.introspection?.authorization;
     if (!authorization) {
         return undefined;
@@ -49,7 +49,7 @@ async function resolveAuthorization(issuer: Issuer) : Promise<string | undefined
 
     if (typeof authorization === 'function') {
         try {
-            return await authorization();
+            return await authorization({ retry });
         } catch (e) {
             throw fail('The introspection authorization could not be resolved.', e);
         }
@@ -62,10 +62,12 @@ function isResponse(input: unknown) : input is IntrospectionResponse {
     return typeof input === 'object' && input !== null && !Array.isArray(input);
 }
 
-async function request(token: string, issuer: Issuer, fetchFn: typeof globalThis.fetch) : Promise<JWTPayload> {
-    const endpoint = await resolveEndpoint(issuer, fetchFn);
-    const authorization = await resolveAuthorization(issuer);
-
+async function send(
+    token: string,
+    endpoint: string,
+    authorization: string | undefined,
+    fetchFn: typeof globalThis.fetch,
+) : Promise<Response> {
     const headers : Record<string, string> = {
         'content-type': 'application/x-www-form-urlencoded',
         accept: 'application/json',
@@ -74,9 +76,8 @@ async function request(token: string, issuer: Issuer, fetchFn: typeof globalThis
         headers.authorization = authorization;
     }
 
-    let response : Response;
     try {
-        response = await fetchFn(endpoint, {
+        return await fetchFn(endpoint, {
             method: 'POST',
             headers,
             body: new URLSearchParams({ token }).toString(),
@@ -85,10 +86,27 @@ async function request(token: string, issuer: Issuer, fetchFn: typeof globalThis
     } catch (e) {
         throw fail('The introspection request failed.', e);
     }
+}
+
+async function request(token: string, issuer: Issuer, fetchFn: typeof globalThis.fetch) : Promise<JWTPayload> {
+    const endpoint = await resolveEndpoint(issuer, fetchFn);
+
+    let response = await send(token, endpoint, await resolveAuthorization(issuer, false), fetchFn);
+
+    // A function may hold a token that expired since it was minted; it gets
+    // one chance to mint a fresh one. Client credentials would only repeat.
+    if (response.status === 401 && typeof issuer.introspection?.authorization === 'function') {
+        await response.body?.cancel().catch(() => undefined);
+        response = await send(token, endpoint, await resolveAuthorization(issuer, true), fetchFn);
+    }
 
     if (!response.ok) {
         await response.body?.cancel().catch(() => undefined);
-        throw fail(`The introspection endpoint answered ${response.status}.`);
+        throw new VouchlyError(
+            VouchlyErrorCode.INTROSPECTION_FAILED,
+            `The introspection endpoint answered ${response.status}.`,
+            { status: response.status },
+        );
     }
 
     let body : unknown;

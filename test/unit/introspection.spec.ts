@@ -416,3 +416,75 @@ describe('src/introspection', () => {
         expect(stub.requests).toHaveLength(1);
     });
 });
+
+describe('introspection retry after 401', () => {
+    function sequence(...statuses: number[]) : () => Response {
+        let index = 0;
+        return () => {
+            const status = statuses[Math.min(index, statuses.length - 1)]!;
+            index += 1;
+            return status === 200 ?
+                activeResponse()() :
+                new Response('denied', { status });
+        };
+    }
+
+    it('should retry once with fresh authorization after a 401', async () => {
+        const stub = createStub(sequence(401, 200));
+        const calls : boolean[] = [];
+        const issuer = introspectionIssuer({
+            introspection: {
+                endpoint: ENDPOINT,
+                authorization: ({ retry }) => {
+                    calls.push(retry);
+                    return retry ? 'Bearer fresh' : 'Bearer stale';
+                },
+            },
+        });
+
+        const result = await introspect(JWT, issuer, stub.fetch);
+
+        expect(result.sub).toBe('user');
+        expect(calls).toEqual([false, true]);
+        expect(stub.requests.map((r) => r.headers.get('authorization'))).toEqual(['Bearer stale', 'Bearer fresh']);
+    });
+
+    it('should fail with the status after a second 401', async () => {
+        const stub = createStub(sequence(401, 401));
+        const issuer = introspectionIssuer({ introspection: { endpoint: ENDPOINT, authorization: () => 'Bearer x' } });
+
+        const error = await expectCode(introspect(JWT, issuer, stub.fetch), VouchlyErrorCode.INTROSPECTION_FAILED);
+
+        expect((error as { status?: number }).status).toBe(401);
+        expect(stub.requests).toHaveLength(2);
+    });
+
+    it('should not retry client credentials after a 401', async () => {
+        const stub = createStub(sequence(401, 200));
+
+        const error = await expectCode(introspect(JWT, introspectionIssuer(), stub.fetch), VouchlyErrorCode.INTROSPECTION_FAILED);
+
+        expect((error as { status?: number }).status).toBe(401);
+        expect(stub.requests).toHaveLength(1);
+    });
+
+    it('should not retry a 503 and carry its status', async () => {
+        const stub = createStub(sequence(503, 200));
+        const calls : boolean[] = [];
+        const issuer = introspectionIssuer({
+            introspection: {
+                endpoint: ENDPOINT,
+                authorization: ({ retry }) => {
+                    calls.push(retry);
+                    return 'Bearer x';
+                },
+            },
+        });
+
+        const error = await expectCode(introspect(JWT, issuer, stub.fetch), VouchlyErrorCode.INTROSPECTION_FAILED);
+
+        expect((error as { status?: number }).status).toBe(503);
+        expect(calls).toEqual([false]);
+        expect(stub.requests).toHaveLength(1);
+    });
+});
