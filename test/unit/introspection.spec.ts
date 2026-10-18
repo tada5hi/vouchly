@@ -75,7 +75,7 @@ function introspectionIssuer(options: Partial<Issuer> = {}) : Issuer {
     return {
         id: 'remote',
         issuer: ISSUER,
-        verification: 'introspection',
+        verification: 'remote',
         introspection: {
             endpoint: ENDPOINT,
             authorization: { clientId: 'client', clientSecret: 'secret' },
@@ -116,7 +116,7 @@ describe('src/introspection', () => {
 
         const result = await verifier(stub).verify(JWT);
 
-        expect(result.source).toBe('introspection');
+        expect(result.source).toBe('remote');
         expect(result.issuer.id).toBe('remote');
         expect(result.claims.sub).toBe('user');
 
@@ -226,7 +226,7 @@ describe('src/introspection', () => {
 
         const result = await verifier(stub, introspectionIssuer({ introspection: {} })).verify(JWT);
 
-        expect(result.source).toBe('introspection');
+        expect(result.source).toBe('remote');
         expect(stub.requests.map((request) => request.url)).toEqual([
             `${ISSUER}/.well-known/openid-configuration`,
             ENDPOINT,
@@ -244,7 +244,7 @@ describe('src/introspection', () => {
 
         const result = await verifier(stub, introspectionIssuer({ introspection: {} })).verify(JWT);
 
-        expect(result.source).toBe('introspection');
+        expect(result.source).toBe('remote');
         expect(stub.requests.map((request) => request.url)).toEqual([
             `${ISSUER}/.well-known/openid-configuration`,
             ENDPOINT,
@@ -355,7 +355,7 @@ describe('src/introspection', () => {
         const stub = createStub(activeResponse());
 
         const result = await verifier(stub, introspectionIssuer(), { opaque: 'remote' }).verify('abc123');
-        expect(result.source).toBe('introspection');
+        expect(result.source).toBe('remote');
         expect(stub.requests[0]!.body).toBe('token=abc123');
 
         await expectCode(verifier(stub).verify('abc123'), VouchrErrorCode.TOKEN_MALFORMED);

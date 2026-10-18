@@ -27,7 +27,7 @@ export type Issuer = {
     /**
      * Default: 'local'.
      */
-    verification?: 'local' | 'introspection',
+    verification?: 'local' | 'remote',
     introspection?: IntrospectionOptions,
     audience?: string | string[],
     /**

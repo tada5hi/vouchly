@@ -154,7 +154,7 @@ function buildRecords(options: VerifierOptions) : IssuerRecord[] {
         names.add(name);
 
         const verification = issuer.verification ?? 'local';
-        if (verification !== 'local' && verification !== 'introspection') {
+        if (verification !== 'local' && verification !== 'remote') {
             throw new TypeError(`The issuer "${name}" has an unknown verification "${String(verification)}".`);
         }
 
@@ -243,7 +243,7 @@ export class Verifier implements IVerifier {
         }
 
         const record = this.selectRecord(parsed!);
-        if (record.issuer.verification === 'introspection') {
+        if (record.issuer.verification === 'remote') {
             return this.introspect(token, key, record, options, parsed);
         }
 
@@ -282,7 +282,7 @@ export class Verifier implements IVerifier {
         source: VerifyResult['source'],
         token: ParsedToken | undefined,
     ) : JWTPayload[] {
-        return source === 'introspection' && token ? [claims, token.claims] : [claims];
+        return source === 'remote' && token ? [claims, token.claims] : [claims];
     }
 
     protected selectRecord(token: ParsedToken) : IssuerRecord {
@@ -375,18 +375,18 @@ export class Verifier implements IVerifier {
             {
                 claims, 
                 issuer: record.name, 
-                source: 'introspection', 
+                source: 'remote', 
             },
             claims.exp,
             record.issuer.introspection?.maxCacheTTL,
         );
 
-        await resolveCertificateBinding(this.bindingClaims(claims, 'introspection', parsed), options);
+        await resolveCertificateBinding(this.bindingClaims(claims, 'remote', parsed), options);
 
         return {
             claims: structuredClone(claims),
             issuer: record.issuer,
-            source: 'introspection',
+            source: 'remote',
         };
     }
 

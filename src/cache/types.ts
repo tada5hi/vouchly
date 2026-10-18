@@ -6,7 +6,7 @@ export type TokenCacheEntry = {
      * Issuer.id, or the issuer's index in the verifier's list when it has no id.
      */
     issuer: string,
-    source: 'local' | 'introspection',
+    source: 'local' | 'remote',
     /**
      * The token header's `typ`, for a locally verified token that carried one.
      */

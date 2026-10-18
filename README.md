@@ -39,7 +39,7 @@ A service that accepts tokens from more than one place (your own identity provid
 | Where the keys come from | Wire `jwks_uri` per issuer by hand | `discovery()` reads it from the issuer's `/.well-known/openid-configuration`; `jwks()`, `staticKeys()` and `cachedKeys()` for everything else |
 | Algorithm confusion | Hope the allowed algorithms are set everywhere | Symmetric keys and RSA keys under 2048 bits are refused; a JWK that names its `alg` decides the algorithm, one without is imported with the header's `alg`, restricted to what its key type supports, and `algorithms` pins it |
 | Malformed input | Whatever the decoder tolerates | Exactly three base64url segments, no padding, no whitespace, checked before the cache or any key lookup |
-| Opaque and revocable tokens | A second code path with its own HTTP client | `verification: 'introspection'` per issuer (RFC 7662), with a cache bound you choose |
+| Opaque and revocable tokens | A second code path with its own HTTP client | `verification: 'remote'` per issuer (RFC 7662), with a cache bound you choose |
 | Certificate-bound tokens | Compare `cnf.x5t#S256` yourself, and remember it on cache hits | RFC 8705 binding checked on every call, cache hits included, failing closed |
 | Repeated verification | Cache the decoded payload and hope it expires | A bounded cache keyed by the token's SHA-256, never kept past `exp` |
 | Errors | jose errors, `TypeError`s, fetch failures | One `VouchrError` with one of nine codes, the original kept as `cause` |
@@ -171,7 +171,7 @@ A key source is any `(context) => Promise<CryptoKey | JWK>`; `context` carries t
 
 ### Introspection
 
-Set `verification: 'introspection'` to ask the issuer about each token (RFC 7662) instead of checking a signature. This is the way to notice a revoked token before it expires, and the only way to accept opaque tokens.
+Set `verification: 'remote'` to ask the issuer about each token (RFC 7662) instead of checking a signature. This is the way to notice a revoked token before it expires, and the only way to accept opaque tokens.
 
 ```ts
 import { createVerifier } from 'vouchr';
@@ -181,7 +181,7 @@ const verifier = createVerifier({
         {
             id: 'id-provider',
             issuer: 'https://id.example.com',
-            verification: 'introspection',
+            verification: 'remote',
             introspection: {
                 authorization: { clientId: 'resource-server', clientSecret: process.env.CLIENT_SECRET! },
                 maxCacheTTL: 30,
@@ -259,7 +259,7 @@ const verifier = createVerifier({
 | `id` | `string` | the issuer's index | Names the config. Required for `opaque`; must be unique. |
 | `issuer` | `string \| (claims) => boolean` | | A string must equal `iss`. A function sees unverified claims and only selects the config; it matches only when it returns exactly `true`. |
 | `keys` | `KeySource` | `discovery()` for a string issuer | Required for a function issuer verified locally. |
-| `verification` | `'local' \| 'introspection'` | `'local'` | Check the signature, or ask the introspection endpoint. |
+| `verification` | `'local' \| 'remote'` | `'local'` | Check the signature, or ask the introspection endpoint. |
 | `introspection` | `{ endpoint?, authorization?, maxCacheTTL? }` | | See [Introspection](#introspection). `maxCacheTTL` is in seconds. |
 | `audience` | `string \| string[]` | not checked | Some `aud` value must be in the list. |
 | `algorithms` | `string[]` | what the resolved key implies | The key's own `alg` when the JWK names one. A JWK without `alg` is imported with the token header's `alg`, restricted to algorithms its key type supports (an RSA key can then verify `RS*` or `PS*`); set `algorithms` to pin it. |

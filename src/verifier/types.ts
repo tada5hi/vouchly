@@ -37,7 +37,7 @@ export type VerifyOptions = {
 export type VerifyResult = {
     claims: JWTPayload,
     issuer: Issuer,
-    source: 'local' | 'introspection',
+    source: 'local' | 'remote',
 };
 
 export interface IVerifier {

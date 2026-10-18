@@ -598,6 +598,6 @@ describe('src/verifier', () => {
         expect(() => createVerifier({ issuers: [{ id: 'a', issuer: ISSUER }], opaque: 'b' })).toThrow(TypeError);
         expect(() => new Verifier({ issuers: [] })).toThrow(TypeError);
 
-        expect(() => createVerifier({ issuers: [{ issuer: () => true, verification: 'introspection' }] })).not.toThrow();
+        expect(() => createVerifier({ issuers: [{ issuer: () => true, verification: 'remote' }] })).not.toThrow();
     });
 });
