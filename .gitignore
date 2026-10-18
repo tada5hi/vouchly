@@ -7,5 +7,5 @@ coverage
 *.log
 npm-debug.log*
 .env
-cache
+/cache
 .claude/settings.local.json

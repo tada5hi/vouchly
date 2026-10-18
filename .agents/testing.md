@@ -13,7 +13,7 @@
 npm run test                                          # run all tests once
 npm run test:coverage                                 # run all tests with coverage
 npx vitest --config test/vitest.config.ts             # watch mode
-npx vitest --config test/vitest.config.ts --run test/unit/index.spec.ts   # single file
+npx vitest --config test/vitest.config.ts --run test/unit/token.spec.ts   # single file
 ```
 
 `npm run test` already passes `--run`, so it never enters watch mode — safe for CI and for agents.
@@ -26,23 +26,22 @@ npx vitest --config test/vitest.config.ts --run test/unit/index.spec.ts   # sing
 
 ```typescript
 import { describe, expect, it } from 'vitest';
-import { add } from '../../src';
+import { isCompactToken } from '../../src';
 
-describe('src/index.ts', () => {
-    it('should add numbers', () => {
-        const result = add(1, 2);
-        expect(result).toEqual(3);
+describe('src/token', () => {
+    it('should reject a padded token', () => {
+        expect(isCompactToken('a.b.c==')).toBe(false);
     });
 });
 ```
 
 Conventions visible in the existing spec:
 
-- The top-level `describe` names the source file under test (`'src/index.ts'`).
+- The top-level `describe` names the source module under test (`'src/token'`).
 - `it` titles read as `should ...`.
 - Import through the barrel (`'../../src'`) rather than deep paths, so tests exercise the public surface.
 
-There are no integration tests, no fixtures, and no test helpers. If a downstream project needs them, add a sibling directory (e.g. `test/integration/`) **and** widen the `include` glob in `test/vitest.config.ts` — otherwise the new tests are silently skipped.
+There are no integration tests, no fixtures, and no shared test helpers; tokens are minted in the spec with jose (`SignJWT`, `generateKeyPair`). If a downstream project needs them, add a sibling directory (e.g. `test/integration/`) **and** widen the `include` glob in `test/vitest.config.ts` — otherwise the new tests are silently skipped.
 
 ## Testing Philosophy
 
@@ -65,7 +64,7 @@ Provider is **v8**, and coverage is measured over `src/**/*.{ts,tsx,js,jsx}` onl
 | Lines      | 80%       |
 | Statements | 80%       |
 
-Reports land in `coverage/` (git-ignored). The README links a Codecov badge, but no upload step is wired into CI.
+Reports land in `coverage/` (git-ignored). No upload step is wired into CI, so the README carries no coverage badge.
 
 ## CI Pipeline
 
