@@ -1,5 +1,7 @@
 <!-- NOTE: Keep this file and all corresponding files in the .agents directory updated as the project evolves. When making architectural changes, adding new patterns, or discovering important conventions, update the relevant sections. -->
 
+Use this guide as the entry point. Read linked guides on demand before changing their areas.
+
 # vouchly: Agent Guide
 
 vouchly verifies OAuth2 and OIDC tokens against a configured list of trusted issuers: signed JWTs (keys from OIDC discovery, a JWKS URL, static keys or a custom loader), RFC 7662 introspection, and RFC 8705 certificate-bound tokens. It runs on any Web runtime: `src/` uses Web APIs only (WebCrypto, `fetch`) and never imports `node:*`. Its only runtime dependency is `jose`.
