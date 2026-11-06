@@ -43,11 +43,13 @@ export async function resolveCertificateBinding(
     options: VerifyOptions,
 ) : Promise<void> {
     const bound = (Array.isArray(claims) ? claims : [claims]).filter(isBound);
+
     if (bound.length === 0) {
         return;
     }
 
     let thumbprint : string | undefined;
+
     if (typeof options.certificateThumbprint === 'function') {
         try {
             thumbprint = await options.certificateThumbprint();

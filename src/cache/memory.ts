@@ -13,6 +13,7 @@ export class MemoryTokenCache implements ITokenCache {
 
     constructor(options: MemoryTokenCacheOptions = {}) {
         const max = options.max ?? 10_000;
+
         if (!Number.isSafeInteger(max) || max < 1) {
             throw new TypeError('The token cache max must be an integer of at least 1.');
         }
@@ -23,6 +24,7 @@ export class MemoryTokenCache implements ITokenCache {
 
     async get(key: string): Promise<TokenCacheEntry | undefined> {
         const item = this.items.get(key);
+
         if (!item) {
             return undefined;
         }
@@ -52,6 +54,7 @@ export class MemoryTokenCache implements ITokenCache {
 
         while (this.items.size > this.max) {
             const oldest = this.items.keys().next();
+
             if (oldest.done) {
                 break;
             }

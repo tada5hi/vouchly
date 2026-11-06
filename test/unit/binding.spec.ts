@@ -29,9 +29,9 @@ async function setup() : Promise<{ verifier: Verifier, sign: (claims?: Record<st
     return {
         verifier: createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([jwk]) }] }),
         sign: (claims = {}) => new SignJWT({
-            sub: 'client', 
-            iss: ISSUER, 
-            ...claims, 
+            sub: 'client',
+            iss: ISSUER,
+            ...claims,
         })
             .setProtectedHeader({ alg: 'ES256', kid: 'k1' })
             .setExpirationTime('1h')
@@ -41,6 +41,7 @@ async function setup() : Promise<{ verifier: Verifier, sign: (claims?: Record<st
 
 async function expectMismatch(promise: Promise<unknown>) {
     let error : unknown;
+
     try {
         await promise;
     } catch (e) {
@@ -76,9 +77,11 @@ describe('src/verifier binding', () => {
         const token = await sign({ cnf: { 'x5t#S256': THUMBPRINT } });
 
         const first = await verifier.verify(token, { certificateThumbprint: THUMBPRINT });
+
         expect(first.claims.sub).toBe('client');
 
         const second = await verifier.verify(token, { certificateThumbprint: async () => THUMBPRINT });
+
         expect(second.claims.sub).toBe('client');
     });
 
@@ -89,6 +92,7 @@ describe('src/verifier binding', () => {
         await verifier.verify(await sign(), {
             certificateThumbprint: () => {
                 calls++;
+
                 return THUMBPRINT;
             },
         });
@@ -109,16 +113,20 @@ describe('src/verifier binding', () => {
         const token = await sign({ cnf: { 'x5t#S256': THUMBPRINT } });
 
         const first = await verifier.verify(token, { certificateThumbprint: THUMBPRINT });
+
         (first.claims.cnf as Record<string, unknown>)['x5t#S256'] = 'evil';
         delete first.claims.cnf;
 
         await expectMismatch(verifier.verify(token));
 
         const second = await verifier.verify(token, { certificateThumbprint: THUMBPRINT });
+
         expect(second.claims.cnf).toEqual({ 'x5t#S256': THUMBPRINT });
 
         (second.claims.cnf as Record<string, unknown>)['x5t#S256'] = 'evil';
+
         const third = await verifier.verify(token, { certificateThumbprint: THUMBPRINT });
+
         expect(third.claims.cnf).toEqual({ 'x5t#S256': THUMBPRINT });
     });
 });

@@ -55,9 +55,9 @@ type SignOptions = {
 
 async function sign(key: SigningKey, options: SignOptions = {}) : Promise<string> {
     const jwt = new SignJWT({
-        sub: 'user', 
-        iss: ISSUER, 
-        ...options.claims, 
+        sub: 'user',
+        iss: ISSUER,
+        ...options.claims,
     })
         .setProtectedHeader({
             alg: 'RS256',
@@ -84,6 +84,7 @@ function countingKeys(keys: JWK[]) : { source: KeySource, calls: () => number } 
     return {
         source: async (context) => {
             count++;
+
             return inner(context);
         },
         calls: () => count,
@@ -92,6 +93,7 @@ function countingKeys(keys: JWK[]) : { source: KeySource, calls: () => number } 
 
 async function expectCode(promise: Promise<unknown>, code: VouchlyErrorCode) : Promise<unknown> {
     let error : unknown;
+
     try {
         await promise;
     } catch (e) {
@@ -115,10 +117,10 @@ describe('src/verifier', () => {
         const key = await createSigningKey('k1');
         const verifier = createVerifier({
             issuers: [{
-                id: 'main', 
-                issuer: ISSUER, 
-                keys: staticKeys([key.jwk]), 
-            }], 
+                id: 'main',
+                issuer: ISSUER,
+                keys: staticKeys([key.jwk]),
+            }],
         });
 
         const result = await verifier.verify(await sign(key));
@@ -146,19 +148,20 @@ describe('src/verifier', () => {
         const verifier = createVerifier({
             issuers: [
                 {
-                    id: 'a', 
-                    issuer: (claims) => claims.realm_id === 'a', 
-                    keys: staticKeys([key.jwk]), 
+                    id: 'a',
+                    issuer: (claims) => claims.realm_id === 'a',
+                    keys: staticKeys([key.jwk]),
                 },
                 {
-                    id: 'b', 
-                    issuer: (claims) => claims.realm_id === 'b', 
-                    keys: staticKeys([key.jwk]), 
+                    id: 'b',
+                    issuer: (claims) => claims.realm_id === 'b',
+                    keys: staticKeys([key.jwk]),
                 },
             ],
         });
 
         const result = await verifier.verify(await sign(key, { claims: { iss: 'https://any.example', realm_id: 'b' } }));
+
         expect(result.issuer.id).toBe('b');
     });
 
@@ -166,7 +169,12 @@ describe('src/verifier', () => {
         const key = await createSigningKey('k1');
         const verifier = createVerifier({
             issuers: [
-                { issuer: () => { throw new Error('boom'); }, keys: staticKeys([key.jwk]) },
+                {
+                    issuer: () => {
+                        throw new Error('boom');
+                    },
+                    keys: staticKeys([key.jwk]),
+                },
                 { issuer: () => 'yes' as unknown as boolean, keys: staticKeys([key.jwk]) },
             ],
         });
@@ -194,30 +202,31 @@ describe('src/verifier', () => {
         );
         await expectCode(
             verifier.verify(await sign(key, {
-                claims: { aud: 'api' }, 
-                typ: 'at+jwt', 
-                nbf: now() + 600, 
+                claims: { aud: 'api' },
+                typ: 'at+jwt',
+                nbf: now() + 600,
             })),
             VouchlyErrorCode.CLAIM_INVALID,
         );
         await expectCode(
             verifier.verify(await sign(key, {
-                claims: { aud: 'api' }, 
-                typ: 'at+jwt', 
-                exp: now() - 60, 
+                claims: { aud: 'api' },
+                typ: 'at+jwt',
+                exp: now() - 60,
             })),
             VouchlyErrorCode.TOKEN_EXPIRED,
         );
         await expectCode(
             verifier.verify(await sign(key, {
-                claims: { aud: 'api' }, 
-                typ: 'at+jwt', 
-                exp: false, 
+                claims: { aud: 'api' },
+                typ: 'at+jwt',
+                exp: false,
             })),
             VouchlyErrorCode.CLAIM_INVALID,
         );
 
         const result = await verifier.verify(await sign(key, { claims: { aud: 'api' }, typ: 'at+jwt' }));
+
         expect(result.claims.aud).toBe('api');
     });
 
@@ -225,13 +234,14 @@ describe('src/verifier', () => {
         const key = await createSigningKey('k1');
         const verifier = createVerifier({
             issuers: [{
-                issuer: ISSUER, 
-                keys: staticKeys([key.jwk]), 
-                clockTolerance: 60, 
-            }], 
+                issuer: ISSUER,
+                keys: staticKeys([key.jwk]),
+                clockTolerance: 60,
+            }],
         });
 
         const result = await verifier.verify(await sign(key, { nbf: now() + 30 }));
+
         expect(result.claims.sub).toBe('user');
     });
 
@@ -251,15 +261,17 @@ describe('src/verifier', () => {
 
         const header = base64url.encode(JSON.stringify({ alg: 'none', kid: 'k1' }));
         const payload = base64url.encode(JSON.stringify({
-            sub: 'user', 
-            iss: ISSUER, 
-            exp: now() + 3600, 
+            sub: 'user',
+            iss: ISSUER,
+            exp: now() + 3600,
         }));
+
         // An empty signature segment is not a compact JWS at all.
         await expectCode(verifier.verify(`${header}.${payload}.`), VouchlyErrorCode.TOKEN_MALFORMED);
 
         // A non-empty one gets as far as jose, which refuses the algorithm.
         const error = await expectCode(verifier.verify(`${header}.${payload}.AAAA`), VouchlyErrorCode.CLAIM_INVALID);
+
         expect((error as Error).cause).toBeInstanceOf(errors.JOSEAlgNotAllowed);
     });
 
@@ -268,24 +280,28 @@ describe('src/verifier', () => {
         const verifier = createVerifier({
             issuers: [
                 {
-                    id: 'a', 
-                    issuer: ISSUER, 
-                    keys: staticKeys([key.jwk]), 
-                    claims: async () => false, 
+                    id: 'a',
+                    issuer: ISSUER,
+                    keys: staticKeys([key.jwk]),
+                    claims: async () => false,
                 },
             ],
         });
+
         await expectCode(verifier.verify(await sign(key)), VouchlyErrorCode.CLAIM_INVALID);
 
         const throwing = createVerifier({
             issuers: [
                 {
-                    issuer: ISSUER, 
-                    keys: staticKeys([key.jwk]), 
-                    claims: () => { throw new Error('nope'); }, 
+                    issuer: ISSUER,
+                    keys: staticKeys([key.jwk]),
+                    claims: () => {
+                        throw new Error('nope');
+                    },
                 },
             ],
         });
+
         await expectCode(throwing.verify(await sign(key)), VouchlyErrorCode.CLAIM_INVALID);
     });
 
@@ -294,14 +310,15 @@ describe('src/verifier', () => {
         const keys = countingKeys([key.jwk]);
         const verifier = createVerifier({
             issuers: [{
-                id: 'main', 
-                issuer: ISSUER, 
-                keys: keys.source, 
-            }], 
+                id: 'main',
+                issuer: ISSUER,
+                keys: keys.source,
+            }],
         });
         const token = await sign(key);
 
         await verifier.verify(token);
+
         const second = await verifier.verify(token);
 
         expect(keys.calls()).toBe(1);
@@ -342,14 +359,14 @@ describe('src/verifier', () => {
         const key = await createSigningKey('k1');
         const cache = new MemoryTokenCache();
         const a = createVerifier({
-            issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }],
+            cache,
+            cacheNamespace: 'shared',
         });
         const b = createVerifier({
-            issuers: [{ issuer: 'https://other.example', keys: staticKeys([key.jwk]) }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ issuer: 'https://other.example', keys: staticKeys([key.jwk]) }],
+            cache,
+            cacheNamespace: 'shared',
         });
         const token = await sign(key);
 
@@ -366,39 +383,44 @@ describe('src/verifier', () => {
             keys: staticKeys([key.jwk]),
         };
         const a = createVerifier({
-            issuers: [base], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [base],
+            cache,
+            cacheNamespace: 'shared',
         });
         const token = await sign(key, { typ: 'JWT' });
+
         await a.verify(token);
 
         const typ = createVerifier({
-            issuers: [{ ...base, typ: 'at+jwt' }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ ...base, typ: 'at+jwt' }],
+            cache,
+            cacheNamespace: 'shared',
         });
+
         await expectCode(typ.verify(token), VouchlyErrorCode.CLAIM_INVALID);
 
         const required = createVerifier({
-            issuers: [{ ...base, requiredClaims: ['exp', 'jti'] }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ ...base, requiredClaims: ['exp', 'jti'] }],
+            cache,
+            cacheNamespace: 'shared',
         });
+
         await expectCode(required.verify(token), VouchlyErrorCode.CLAIM_INVALID);
 
         const predicate = createVerifier({
-            issuers: [{ ...base, claims: () => false }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ ...base, claims: () => false }],
+            cache,
+            cacheNamespace: 'shared',
         });
+
         await expectCode(predicate.verify(token), VouchlyErrorCode.CLAIM_INVALID);
 
         const same = createVerifier({
-            issuers: [{ ...base, typ: 'jwt' }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ ...base, typ: 'jwt' }],
+            cache,
+            cacheNamespace: 'shared',
         });
+
         expect((await same.verify(token)).claims.sub).toBe('user');
     });
 
@@ -408,14 +430,14 @@ describe('src/verifier', () => {
         const keysA = countingKeys([key.jwk]);
         const keysB = countingKeys([key.jwk]);
         const a = createVerifier({
-            issuers: [{ issuer: ISSUER, keys: keysA.source }], 
-            cache, 
-            cacheNamespace: 'a', 
+            issuers: [{ issuer: ISSUER, keys: keysA.source }],
+            cache,
+            cacheNamespace: 'a',
         });
         const b = createVerifier({
-            issuers: [{ issuer: ISSUER, keys: keysB.source }], 
-            cache, 
-            cacheNamespace: 'b', 
+            issuers: [{ issuer: ISSUER, keys: keysB.source }],
+            cache,
+            cacheNamespace: 'b',
         });
         const token = await sign(key);
 
@@ -433,14 +455,14 @@ describe('src/verifier', () => {
 
         expect(() => createVerifier({ issuers, cache })).toThrow(TypeError);
         expect(() => createVerifier({
-            issuers, 
-            cache, 
-            cacheNamespace: '', 
+            issuers,
+            cache,
+            cacheNamespace: '',
         })).toThrow(TypeError);
         expect(() => createVerifier({
-            issuers, 
-            cache, 
-            cacheNamespace: 'api', 
+            issuers,
+            cache,
+            cacheNamespace: 'api',
         })).not.toThrow();
         expect(() => createVerifier({ issuers })).not.toThrow();
         expect(() => createVerifier({ issuers, cache: false })).not.toThrow();
@@ -450,7 +472,7 @@ describe('src/verifier', () => {
         expect(() => createVerifier({
             issuers: [{ issuer: ISSUER, keys: staticKeys([]) }],
             cache: new MemoryTokenCache(),
-            cacheNamespace: 'a\u0000x',
+            cacheNamespace: 'a\0x',
         })).toThrow(TypeError);
     });
 
@@ -458,19 +480,19 @@ describe('src/verifier', () => {
         const key = await createSigningKey('k1');
         const cache = new MemoryTokenCache();
         const base : Issuer = {
-            id: 'main', 
-            issuer: ISSUER, 
-            keys: staticKeys([key.jwk]), 
+            id: 'main',
+            issuer: ISSUER,
+            keys: staticKeys([key.jwk]),
         };
         const a = createVerifier({
-            issuers: [base], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [base],
+            cache,
+            cacheNamespace: 'shared',
         });
         const b = createVerifier({
-            issuers: [{ ...base, algorithms: ['PS256'] }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ ...base, algorithms: ['PS256'] }],
+            cache,
+            cacheNamespace: 'shared',
         });
         const token = await sign(key);
 
@@ -482,19 +504,19 @@ describe('src/verifier', () => {
         const key = await createSigningKey('k1');
         const cache = new MemoryTokenCache();
         const base : Issuer = {
-            id: 'main', 
-            issuer: ISSUER, 
-            keys: staticKeys([key.jwk]), 
+            id: 'main',
+            issuer: ISSUER,
+            keys: staticKeys([key.jwk]),
         };
         const a = createVerifier({
-            issuers: [{ ...base, clockTolerance: 120 }], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [{ ...base, clockTolerance: 120 }],
+            cache,
+            cacheNamespace: 'shared',
         });
         const b = createVerifier({
-            issuers: [base], 
-            cache, 
-            cacheNamespace: 'shared', 
+            issuers: [base],
+            cache,
+            cacheNamespace: 'shared',
         });
         const token = await sign(key, { nbf: Math.floor(Date.now() / 1000) + 60 });
 
@@ -572,10 +594,10 @@ describe('src/verifier', () => {
         const keys = countingKeys([key.jwk]);
         const verifier = createVerifier({
             issuers: [{
-                issuer: ISSUER, 
-                keys: keys.source, 
-                requiredClaims: [], 
-            }], 
+                issuer: ISSUER,
+                keys: keys.source,
+                requiredClaims: [],
+            }],
         });
         const token = await sign(key, { exp: false });
 

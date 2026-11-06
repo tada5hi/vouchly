@@ -28,6 +28,7 @@ async function resolveEndpoint(issuer: Issuer, fetchFn: typeof globalThis.fetch)
     }
 
     let endpoint : string | undefined;
+
     try {
         endpoint = (await fetchProviderMetadata(issuer.issuer, fetchFn)).introspection_endpoint;
     } catch (e) {
@@ -43,6 +44,7 @@ async function resolveEndpoint(issuer: Issuer, fetchFn: typeof globalThis.fetch)
 
 async function resolveAuthorization(issuer: Issuer, retry: boolean) : Promise<string | undefined> {
     const authorization = issuer.introspection?.authorization;
+
     if (!authorization) {
         return undefined;
     }
@@ -72,6 +74,7 @@ async function send(
         'content-type': 'application/x-www-form-urlencoded',
         accept: 'application/json',
     };
+
     if (typeof authorization === 'string') {
         headers.authorization = authorization;
     }
@@ -102,6 +105,7 @@ async function request(token: string, issuer: Issuer, fetchFn: typeof globalThis
 
     if (!response.ok) {
         await response.body?.cancel().catch(() => undefined);
+
         throw new VouchlyError(
             VouchlyErrorCode.INTROSPECTION_FAILED,
             `The introspection endpoint answered ${response.status}.`,
@@ -110,6 +114,7 @@ async function request(token: string, issuer: Issuer, fetchFn: typeof globalThis
     }
 
     let body : unknown;
+
     try {
         body = JSON.parse(await response.text());
     } catch (e) {

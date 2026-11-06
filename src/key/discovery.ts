@@ -20,6 +20,7 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
 
     return async (context) => {
         const { issuer } = context.issuer;
+
         if (typeof issuer !== 'string') {
             throw new VouchlyError(
                 VouchlyErrorCode.KEY_UNAVAILABLE,
@@ -28,6 +29,7 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
         }
 
         let metadata;
+
         try {
             metadata = await fetchProviderMetadata(issuer, context.fetch, options);
         } catch (e) {
@@ -36,11 +38,13 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
         }
 
         const { jwks_uri: url } = metadata;
+
         if (!url) {
             throw new VouchlyError(VouchlyErrorCode.KEY_UNAVAILABLE, 'The provider metadata has no jwks_uri.');
         }
 
         let source = sources.get(url);
+
         if (!source) {
             source = jwks(url);
             sources.set(url, source);

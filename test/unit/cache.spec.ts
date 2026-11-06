@@ -71,6 +71,7 @@ describe('src/cache', () => {
         for (const max of [NaN, Infinity, 0, -1, 1.5]) {
             expect(() => new MemoryTokenCache({ max })).toThrow(TypeError);
         }
+
         expect(() => new MemoryTokenCache({ max: 1 })).not.toThrow();
     });
 
@@ -82,6 +83,7 @@ describe('src/cache', () => {
         entry.claims.sub = 'changed';
 
         const read = await cache.get('a');
+
         read!.claims.sub = 'changed';
 
         expect((await cache.get('a'))!.claims.sub).toEqual('a');

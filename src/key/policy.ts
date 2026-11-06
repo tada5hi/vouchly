@@ -24,6 +24,7 @@ export function assertCryptoKeyPolicy(key: CryptoKey) : void {
     }
 
     const { modulusLength } = key.algorithm as { modulusLength?: unknown };
+
     if (typeof modulusLength === 'number' && modulusLength < RSA_MIN_MODULUS_LENGTH) {
         throw new Error(`An RSA key of ${modulusLength} bits is too small, at least ${RSA_MIN_MODULUS_LENGTH} are required.`);
     }

@@ -10,6 +10,7 @@ export function jwks(url: string | URL, options: JWKSOptions = {}) : KeySource {
 
     return async (context) => {
         let set = sets.get(context.fetch);
+
         if (!set) {
             set = createRemoteJWKSet(target, {
                 cacheMaxAge: options.cacheMaxAge,

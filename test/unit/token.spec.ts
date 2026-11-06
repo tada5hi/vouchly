@@ -15,6 +15,7 @@ import {
 function encode(input: unknown) : string {
     const bytes = new TextEncoder().encode(JSON.stringify(input));
     let binary = '';
+
     for (const byte of bytes) {
         binary += String.fromCharCode(byte);
     }
@@ -24,6 +25,7 @@ function encode(input: unknown) : string {
 
 function expectMalformed(input: string) {
     let caught: unknown;
+
     try {
         parseToken(input);
     } catch (e) {
@@ -39,6 +41,7 @@ describe('src/token', () => {
 
     beforeAll(async () => {
         const { privateKey } = await generateKeyPair('ES256');
+
         token = await new SignJWT({ sub: 'alice' })
             .setProtectedHeader({ alg: 'ES256', kid: 'k1' })
             .setExpirationTime('5m')
@@ -47,6 +50,7 @@ describe('src/token', () => {
 
     it('should parse a signed token', () => {
         const parsed = parseToken(token);
+
         expect(parsed.raw).toBe(token);
         expect(parsed.header.alg).toBe('ES256');
         expect(parsed.header.kid).toBe('k1');
@@ -71,6 +75,7 @@ describe('src/token', () => {
         ['a leading space', (t: string) => ` ${t}`],
     ])('should reject a token altered by %s', (_label, alter) => {
         const altered = alter(token);
+
         expect(isCompactToken(altered)).toBe(false);
         expectMalformed(altered);
     });
@@ -93,6 +98,7 @@ describe('src/token', () => {
 
     it('should decode a non-ASCII payload', () => {
         const parsed = parseToken(`${encode({ alg: 'ES256' })}.${encode({ name: 'Пётр' })}.c2ln`);
+
         expect(parsed.claims.name).toBe('Пётр');
     });
 });

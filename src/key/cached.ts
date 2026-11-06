@@ -35,6 +35,7 @@ export function cachedKeys(
         const key = options.key(context);
 
         const item = items.get(key);
+
         if (item) {
             if (item.expiresAt > Date.now()) {
                 return structuredClone(item.jwk);
@@ -44,6 +45,7 @@ export function cachedKeys(
         }
 
         const pending = flights.get(key);
+
         if (pending) {
             return structuredClone(await pending);
         }
@@ -72,6 +74,7 @@ export function cachedKeys(
 
                     while (items.size > max) {
                         const oldest = items.keys().next();
+
                         if (oldest.done) {
                             break;
                         }
@@ -84,6 +87,7 @@ export function cachedKeys(
             })
             .finally(() => {
                 clearTimeout(timer);
+
                 if (flights.get(key) === flight) {
                     flights.delete(key);
                 }

@@ -56,6 +56,7 @@ function deriveAlgorithms(key: CryptoKey) : string[] {
             return bits ? [`PS${bits}`] : [];
         case 'ECDSA': {
             const alg = algorithm.namedCurve ? EC_ALGORITHMS[algorithm.namedCurve] : undefined;
+
             return alg ? [alg] : [];
         }
         case 'Ed25519':
@@ -98,13 +99,17 @@ function assertAudience(issuer: Issuer, claims: JWTPayload) : void {
 
     const expected = Array.isArray(issuer.audience) ? issuer.audience : [issuer.audience];
     const actual = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-    if (actual.every((value) => typeof value !== 'string' || !expected.includes(value))) {
+
+    const audienceRejected = actual.every((value) => typeof value !== 'string' || !expected.includes(value));
+
+    if (audienceRejected) {
         throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The token audience is not accepted.');
     }
 }
 
 function normalizeTyp(value: string) : string {
     const normalized = value.toLowerCase();
+
     return value.includes('/') ? normalized : `application/${normalized}`;
 }
 
@@ -134,6 +139,7 @@ function assertLocalClaims(issuer: Issuer, entry: TokenCacheEntry) : void {
     }
 
     const { nbf } = entry.claims;
+
     if (typeof nbf === 'number' && nbf > (Date.now() / 1000) + (issuer.clockTolerance ?? 0)) {
         throw new VouchlyError(VouchlyErrorCode.CLAIM_INVALID, 'The token is not yet valid.');
     }
@@ -148,17 +154,21 @@ function buildRecords(options: VerifierOptions) : IssuerRecord[] {
 
     return options.issuers.map((issuer, index) => {
         const name = issuer.id ?? String(index);
+
         if (names.has(name)) {
             throw new TypeError(`The issuer id "${name}" is used twice (an issuer without id is named by its index).`);
         }
+
         names.add(name);
 
         const verification = issuer.verification ?? 'local';
+
         if (verification !== 'local' && verification !== 'remote') {
             throw new TypeError(`The issuer "${name}" has an unknown verification "${String(verification)}".`);
         }
 
         let { keys } = issuer;
+
         if (!keys && verification === 'local') {
             if (typeof issuer.issuer !== 'string') {
                 throw new TypeError(
@@ -170,9 +180,9 @@ function buildRecords(options: VerifierOptions) : IssuerRecord[] {
         }
 
         return {
-            name, 
-            issuer, 
-            keys, 
+            name,
+            issuer,
+            keys,
         };
     });
 }
@@ -193,6 +203,7 @@ export class Verifier implements IVerifier {
 
         if (typeof options.opaque !== 'undefined') {
             this.opaque = this.records.find((record) => record.issuer.id === options.opaque);
+
             if (!this.opaque) {
                 throw new TypeError(`The opaque issuer "${options.opaque}" names no configured issuer.`);
             }
@@ -208,7 +219,7 @@ export class Verifier implements IVerifier {
             );
         }
 
-        if (typeof options.cacheNamespace === 'string' && options.cacheNamespace.includes('\u0000')) {
+        if (typeof options.cacheNamespace === 'string' && options.cacheNamespace.includes('\0')) {
             throw new TypeError('The cacheNamespace must not contain a NUL character.');
         }
 
@@ -220,14 +231,16 @@ export class Verifier implements IVerifier {
 
     async verify(token: string, options: VerifyOptions = {}) : Promise<VerifyResult> {
         const compact = typeof token === 'string' && isCompactToken(token);
+
         if (!compact && (!this.opaque || typeof token !== 'string' || token.length === 0)) {
             throw new VouchlyError(VouchlyErrorCode.TOKEN_MALFORMED, 'The token is not a compact JWS.');
         }
 
         const parsed = compact ? parseToken(token) : undefined;
-        const key = await hashToken(`${this.cacheNamespace}\u0000${token}`);
+        const key = await hashToken(`${this.cacheNamespace}\0${token}`);
 
         const cached = await this.readCache(key, parsed);
+
         if (cached) {
             await resolveCertificateBinding(this.bindingClaims(cached.entry.claims, cached.entry.source, parsed), options);
 
@@ -243,6 +256,7 @@ export class Verifier implements IVerifier {
         }
 
         const record = this.selectRecord(parsed!);
+
         if (record.issuer.verification === 'remote') {
             return this.introspect(token, key, record, options, parsed);
         }
@@ -254,6 +268,7 @@ export class Verifier implements IVerifier {
             issuer: record.name,
             source: 'local',
         };
+
         if (typeof parsed!.header.typ === 'string') {
             entry.typ = parsed!.header.typ;
         }
@@ -287,6 +302,7 @@ export class Verifier implements IVerifier {
 
     protected selectRecord(token: ParsedToken) : IssuerRecord {
         const index = selectIssuer(this.records.map((record) => record.issuer), token.claims);
+
         if (index === -1) {
             throw new VouchlyError(VouchlyErrorCode.ISSUER_UNTRUSTED, 'The token issuer is not trusted.');
         }
@@ -304,11 +320,13 @@ export class Verifier implements IVerifier {
         });
 
         const algorithms = issuer.algorithms ?? deriveAlgorithms(key);
+
         if (algorithms.length === 0) {
             throw new VouchlyError(VouchlyErrorCode.KEY_UNAVAILABLE, 'The verification key has no supported algorithm.');
         }
 
         let payload : JWTPayload;
+
         try {
             const output = await jwtVerify(token.raw, key, {
                 algorithms,
@@ -318,6 +336,7 @@ export class Verifier implements IVerifier {
                 requiredClaims: issuer.requiredClaims ?? ['exp'],
                 issuer: typeof issuer.issuer === 'string' ? issuer.issuer : undefined,
             });
+
             payload = output.payload;
         } catch (e) {
             throw mapJoseError(e);
@@ -334,6 +353,7 @@ export class Verifier implements IVerifier {
         }
 
         let passed : boolean;
+
         try {
             passed = await issuer.claims(structuredClone(claims)) === true;
         } catch (e) {
@@ -373,9 +393,9 @@ export class Verifier implements IVerifier {
         await this.writeCache(
             key,
             {
-                claims, 
-                issuer: record.name, 
-                source: 'remote', 
+                claims,
+                issuer: record.name,
+                source: 'remote',
             },
             claims.exp,
             record.issuer.introspection?.maxCacheTTL,
@@ -405,6 +425,7 @@ export class Verifier implements IVerifier {
         }
 
         let entry : TokenCacheEntry | undefined;
+
         try {
             entry = await this.cache.get(key);
         } catch {
@@ -417,6 +438,7 @@ export class Verifier implements IVerifier {
 
         const record = token ? this.selectRecord(token) : this.opaque!;
         const source = record.issuer.verification ?? 'local';
+
         if (entry.issuer !== record.name || entry.source !== source) {
             return undefined;
         }
@@ -431,6 +453,7 @@ export class Verifier implements IVerifier {
 
         // A cache may keep an entry longer than asked (a TTL rounded up).
         const { exp } = entry.claims;
+
         if (
             typeof exp === 'number' &&
             exp <= (Date.now() / 1000) - (record.issuer.clockTolerance ?? 0)
@@ -454,6 +477,7 @@ export class Verifier implements IVerifier {
         }
 
         let ttl : number | undefined;
+
         if (typeof exp === 'number' && Number.isFinite(exp)) {
             ttl = exp - (Date.now() / 1000);
         }

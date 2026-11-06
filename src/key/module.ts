@@ -12,6 +12,7 @@ async function resolve(source: KeySource, context: KeySourceContext) : Promise<C
     const output = await source(context);
 
     let key : CryptoKey | Uint8Array;
+
     if (isJWK(output)) {
         assertJWKPolicy(output);
         key = await importJWK(output, output.alg ?? context.token.header.alg);
