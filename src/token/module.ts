@@ -19,6 +19,7 @@ export function parseToken(token: string): ParsedToken {
 
     let header: ParsedToken['header'];
     let claims: ParsedToken['claims'];
+
     try {
         header = decodeProtectedHeader(token);
         claims = decodeJwt(token);

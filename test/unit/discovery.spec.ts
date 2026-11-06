@@ -52,6 +52,7 @@ function createProvider(key: SigningKey, metadata: Record<string, unknown> = {})
         urls,
         fetch: async (input) => {
             const url = String(input);
+
             urls.push(url);
 
             if (url === `${ISSUER}/.well-known/openid-configuration`) {
@@ -91,6 +92,7 @@ async function createContext(
 
 async function expectKeyUnavailable(promise: Promise<unknown>) {
     let error : unknown;
+
     try {
         await promise;
     } catch (e) {
@@ -127,6 +129,7 @@ describe('src/discovery', () => {
 
         const metadata = await fetchProviderMetadata(`${ISSUER}/`, async (input) => {
             urls.push(String(input));
+
             return Response.json({ issuer: `${ISSUER}/`, jwks_uri: `${ISSUER}/jwks` });
         });
 
@@ -196,6 +199,7 @@ describe('src/discovery', () => {
         let calls = 0;
         const flaky : typeof fetch = async (input, init) => {
             calls++;
+
             if (calls === 1) {
                 return new Response('error', { status: 500 });
             }
@@ -211,7 +215,9 @@ describe('src/discovery', () => {
         expect(calls).toBe(1);
 
         vi.advanceTimersByTime(1);
+
         const resolved = await resolveVerificationKey(discovery(), await createContext(key, flaky));
+
         expect((await exportJWK(resolved)).n).toEqual(key.jwk.n);
     });
 
@@ -222,6 +228,7 @@ describe('src/discovery', () => {
 
         vi.stubGlobal('fetch', async (input: string | URL | Request) => {
             const url = String(input);
+
             urls.push(url);
 
             if (url === `${issuer}/.well-known/openid-configuration`) {

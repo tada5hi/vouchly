@@ -54,6 +54,7 @@ function createStub(answer: (request: RecordedRequest) => Response | Promise<Res
                 headers: new Headers(init?.headers),
                 body: typeof init?.body === 'string' ? init.body : String(init?.body ?? ''),
             };
+
             requests.push(request);
 
             return answer(request);
@@ -94,6 +95,7 @@ function verifier(stub: Stub, issuer: Issuer = introspectionIssuer(), options: P
 
 async function expectCode(promise: Promise<unknown>, code: VouchlyErrorCode) : Promise<unknown> {
     let error : unknown;
+
     try {
         await promise;
     } catch (e) {
@@ -121,7 +123,9 @@ describe('src/introspection', () => {
         expect(result.claims.sub).toBe('user');
 
         expect(stub.requests).toHaveLength(1);
+
         const [request] = stub.requests;
+
         expect(request!.url).toBe(ENDPOINT);
         expect(request!.method).toBe('POST');
         expect(request!.headers.get('content-type')).toBe('application/x-www-form-urlencoded');
@@ -175,6 +179,7 @@ describe('src/introspection', () => {
         const stub = createStub(() => new Response('internal secret detail', { status: 500 }));
 
         const error = await expectCode(verifier(stub).verify(JWT), VouchlyErrorCode.INTROSPECTION_FAILED);
+
         expect((error as Error).message).toContain('500');
         expect((error as Error).message).not.toContain('internal secret detail');
     });
@@ -194,6 +199,7 @@ describe('src/introspection', () => {
         });
 
         const error = await expectCode(verifier(stub).verify(JWT), VouchlyErrorCode.INTROSPECTION_FAILED);
+
         expect((error as Error).cause).toBeInstanceOf(TypeError);
     });
 
@@ -267,6 +273,7 @@ describe('src/introspection', () => {
         expect(discovered.requests).toHaveLength(1);
 
         const unmatched = createStub(activeResponse());
+
         await expectCode(
             introspect(JWT, introspectionIssuer({ issuer: () => true, introspection: {} }), unmatched.fetch),
             VouchlyErrorCode.INTROSPECTION_FAILED,
@@ -278,12 +285,15 @@ describe('src/introspection', () => {
         const stub = createStub(activeResponse({ aud: ['api'], scope: 'read' }));
 
         const passing = verifier(stub, introspectionIssuer({ audience: 'api' }), { cache: false });
+
         await expect(passing.verify(JWT)).resolves.toBeDefined();
 
         const wrongAudience = verifier(stub, introspectionIssuer({ audience: 'other' }), { cache: false });
+
         await expectCode(wrongAudience.verify(JWT), VouchlyErrorCode.CLAIM_INVALID);
 
         const refused = verifier(stub, introspectionIssuer({ claims: (claims) => claims.scope === 'write' }), { cache: false });
+
         await expectCode(refused.verify(JWT), VouchlyErrorCode.CLAIM_INVALID);
     });
 
@@ -355,6 +365,7 @@ describe('src/introspection', () => {
         const stub = createStub(activeResponse());
 
         const result = await verifier(stub, introspectionIssuer(), { opaque: 'remote' }).verify('abc123');
+
         expect(result.source).toBe('remote');
         expect(stub.requests[0]!.body).toBe('token=abc123');
 
@@ -369,6 +380,7 @@ describe('src/introspection', () => {
         await expectCode(instance.verify(JWT), VouchlyErrorCode.BINDING_MISMATCH);
 
         const result = await instance.verify(JWT, { certificateThumbprint: THUMBPRINT });
+
         expect(result.claims.cnf).toEqual({ 'x5t#S256': THUMBPRINT });
 
         await expectCode(instance.verify(JWT, { certificateThumbprint: 'wrong' }), VouchlyErrorCode.BINDING_MISMATCH);
@@ -379,9 +391,9 @@ describe('src/introspection', () => {
         const bound = [
             'eyJhbGciOiJSUzI1NiJ9',
             btoa(JSON.stringify({
-                iss: ISSUER, 
-                sub: 'user', 
-                cnf: { 'x5t#S256': THUMBPRINT }, 
+                iss: ISSUER,
+                sub: 'user',
+                cnf: { 'x5t#S256': THUMBPRINT },
             }))
                 .replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_'),
             'c2lnbmF0dXJl',
@@ -394,10 +406,12 @@ describe('src/introspection', () => {
         await expectCode(instance.verify(bound), VouchlyErrorCode.BINDING_MISMATCH);
 
         const result = await instance.verify(bound, { certificateThumbprint: THUMBPRINT });
+
         expect(result.claims.cnf).toBeUndefined();
         expect(stub.requests).toHaveLength(1);
 
         const conflicting = createStub(activeResponse({ cnf: { 'x5t#S256': 'other' } }));
+
         await expectCode(
             verifier(conflicting).verify(bound, { certificateThumbprint: THUMBPRINT }),
             VouchlyErrorCode.BINDING_MISMATCH,
@@ -409,9 +423,11 @@ describe('src/introspection', () => {
         const instance = verifier(stub);
 
         const first = await instance.verify(JWT);
+
         first.claims.scope = 'admin';
 
         const second = await instance.verify(JWT);
+
         expect(second.claims.scope).toBe('read');
         expect(stub.requests).toHaveLength(1);
     });
@@ -420,9 +436,12 @@ describe('src/introspection', () => {
 describe('introspection retry after 401', () => {
     function sequence(...statuses: number[]) : () => Response {
         let index = 0;
+
         return () => {
             const status = statuses[Math.min(index, statuses.length - 1)]!;
+
             index += 1;
+
             return status === 200 ?
                 activeResponse()() :
                 new Response('denied', { status });
@@ -437,6 +456,7 @@ describe('introspection retry after 401', () => {
                 endpoint: ENDPOINT,
                 authorization: ({ retry }) => {
                     calls.push(retry);
+
                     return retry ? 'Bearer fresh' : 'Bearer stale';
                 },
             },
@@ -476,6 +496,7 @@ describe('introspection retry after 401', () => {
                 endpoint: ENDPOINT,
                 authorization: ({ retry }) => {
                     calls.push(retry);
+
                     return 'Bearer x';
                 },
             },

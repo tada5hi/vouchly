@@ -57,6 +57,7 @@ async function createContext(
 
 async function expectKeyUnavailable(promise: Promise<unknown>, message?: string) {
     let error : unknown;
+
     try {
         await promise;
     } catch (e) {
@@ -65,13 +66,16 @@ async function expectKeyUnavailable(promise: Promise<unknown>, message?: string)
 
     expect(isVouchlyError(error)).toBe(true);
     expect((error as { code: string }).code).toEqual(VouchlyErrorCode.KEY_UNAVAILABLE);
+
     if (message) {
         expect((error as Error).message).toContain(message);
     }
 }
 
 function wait(ms: number) {
-    return new Promise((resolve) => { setTimeout(resolve, ms); });
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
 }
 
 describe('src/key', () => {
@@ -84,6 +88,7 @@ describe('src/key', () => {
             const key = await resolveVerificationKey(staticKeys([a.jwk, b.jwk]), context);
 
             const expected = await exportJWK(key);
+
             expect(expected.n).toEqual(b.jwk.n);
         });
 
@@ -92,6 +97,7 @@ describe('src/key', () => {
             const b = await createSigningKey('b');
 
             const context = await createContext(b);
+
             await expectKeyUnavailable(resolveVerificationKey(staticKeys([a.jwk]), context));
         });
     });
@@ -143,6 +149,7 @@ describe('src/key', () => {
 
             const imported = await resolveVerificationKey(async () => key.jwk, context);
             const resolved = await resolveVerificationKey(async () => imported, context);
+
             expect(resolved).toBe(imported);
         });
 
@@ -152,8 +159,11 @@ describe('src/key', () => {
 
             const cause = new TypeError('boom');
             let error : unknown;
+
             try {
-                await resolveVerificationKey(async () => { throw cause; }, context);
+                await resolveVerificationKey(async () => {
+                    throw cause;
+                }, context);
             } catch (e) {
                 error = e;
             }
@@ -171,6 +181,7 @@ describe('src/key', () => {
             let loads = 0;
             const source = cachedKeys(async () => {
                 loads++;
+
                 return key.jwk;
             }, { key: (ctx) => ctx.token.header.kid as string });
 
@@ -188,6 +199,7 @@ describe('src/key', () => {
             const source = cachedKeys(async () => {
                 loads++;
                 await wait(10);
+
                 return key.jwk;
             }, { key: () => 'a' });
 
@@ -207,6 +219,7 @@ describe('src/key', () => {
             let settled = false;
             const source = cachedKeys(async () => {
                 loads++;
+
                 if (loads === 1) {
                     await wait(100);
                     settled = true;
@@ -237,6 +250,7 @@ describe('src/key', () => {
             let current = 'a';
             const source = cachedKeys(async () => {
                 loads.push(current);
+
                 return key.jwk;
             }, { key: () => current, max: 1 });
 
@@ -256,6 +270,7 @@ describe('src/key', () => {
             let loads = 0;
             const source = cachedKeys(async () => {
                 loads++;
+
                 if (loads === 1) {
                     throw new Error('unavailable');
                 }
@@ -281,6 +296,7 @@ describe('src/key', () => {
             for (const max of [NaN, Infinity, 0, -1, 1.5]) {
                 expect(() => cachedKeys(load, { key, max })).toThrow(TypeError);
             }
+
             expect(() => cachedKeys(load, { key, max: 1 })).not.toThrow();
         });
     });
@@ -294,6 +310,7 @@ describe('src/key', () => {
             const context = await createContext(b, {
                 fetch: async (input) => {
                     urls.push(String(input));
+
                     return Response.json({ keys: [a.jwk, b.jwk] });
                 },
             });

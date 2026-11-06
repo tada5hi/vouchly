@@ -17,6 +17,7 @@ const failures = new WeakMap<typeof fetch, Map<string, number>>();
 
 function scope<T>(store: WeakMap<typeof fetch, Map<string, T>>, fetchFn: typeof globalThis.fetch) : Map<string, T> {
     let map = store.get(fetchFn);
+
     if (!map) {
         map = new Map();
         store.set(fetchFn, map);
@@ -46,6 +47,7 @@ async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<
     }
 
     const body : unknown = await response.json();
+
     if (!isRecord(body)) {
         throw new Error('The provider metadata is not a JSON object.');
     }
@@ -91,12 +93,14 @@ export async function fetchProviderMetadata(
 
     const cached = scope(items, fetchFn);
     const item = cached.get(issuer);
+
     if (item && Date.now() - item.fetchedAt < cacheMaxAge * 1000) {
         return structuredClone(item.metadata);
     }
 
     const failed = scope(failures, fetchFn);
     const failedAt = failed.get(issuer);
+
     if (typeof failedAt === 'number') {
         if (Date.now() - failedAt < FAILURE_COOLDOWN) {
             throw new Error('The provider metadata failed to load recently, not trying again yet.');
@@ -107,13 +111,16 @@ export async function fetchProviderMetadata(
 
     const pending = scope(flights, fetchFn);
     let flight = pending.get(issuer);
+
     if (!flight) {
         flight = load(issuer, fetchFn)
             .then((metadata) => {
                 cached.set(issuer, { metadata, fetchedAt: Date.now() });
+
                 return metadata;
             }, (e: unknown) => {
                 failed.set(issuer, Date.now());
+
                 throw e;
             })
             .finally(() => {
