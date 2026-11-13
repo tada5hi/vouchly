@@ -228,7 +228,10 @@ describe('src/key', () => {
                 return key.jwk;
             }, { key: () => 'a', timeout: 0.02 });
 
-            await expectKeyUnavailable(resolveVerificationKey(source, context));
+            const error = await resolveVerificationKey(source, context).catch((e: unknown) => e);
+
+            expect(isVouchlyError(error)).toBe(true);
+            expect((error as { code: string }).code).toEqual(VouchlyErrorCode.TIMEOUT);
             expect(settled).toBe(false);
 
             await wait(150);
@@ -284,6 +287,24 @@ describe('src/key', () => {
             expect(loads).toEqual(2);
         });
 
+        it('should hand the load a signal that aborts at the deadline', async () => {
+            const key = await createSigningKey('a');
+            const context = await createContext(key);
+
+            const signals : (AbortSignal | undefined)[] = [];
+            const source = cachedKeys((loadContext) => {
+                signals.push(loadContext.signal);
+
+                return new Promise<JWK>(() => {});
+            }, { key: () => 'a', timeout: 0.02 });
+
+            await resolveVerificationKey(source, context).catch(() => undefined);
+
+            expect(signals).toHaveLength(1);
+            expect(signals[0]?.aborted).toBe(true);
+            expect((signals[0]?.reason as Error).name).toBe('TimeoutError');
+        });
+
         it('should reject invalid options', () => {
             const load = async () => ({ kty: 'RSA' });
             const key = () => 'a';
@@ -320,6 +341,23 @@ describe('src/key', () => {
 
             expect(exported.n).toEqual(b.jwk.n);
             expect(urls).toEqual(['https://issuer.example/jwks']);
+        });
+
+        it('should reject a JWKS request that runs out of time as timeout', async () => {
+            const key = await createSigningKey('a');
+            const context = await createContext(key, {
+                fetch: (_input, init) => new Promise<Response>((_resolve, reject) => {
+                    init?.signal?.addEventListener('abort', () => reject(init.signal!.reason), { once: true });
+                }),
+            });
+
+            const error = await resolveVerificationKey(
+                jwks('https://issuer.example/jwks', { timeoutDuration: 20 }),
+                context,
+            ).catch((e: unknown) => e);
+
+            expect(isVouchlyError(error)).toBe(true);
+            expect((error as { code: string }).code).toEqual(VouchlyErrorCode.TIMEOUT);
         });
 
         it('should fail when the endpoint answers 500', async () => {

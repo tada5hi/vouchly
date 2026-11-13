@@ -1,6 +1,6 @@
 import type { DiscoveryOptions } from '../discovery';
 import { fetchProviderMetadata } from '../discovery';
-import { VouchlyError, VouchlyErrorCode } from '../error';
+import { VouchlyError, VouchlyErrorCode, isVouchlyError } from '../error';
 import { jwks } from './jwks';
 import type { KeySource } from './types';
 
@@ -31,8 +31,20 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
         let metadata;
 
         try {
-            metadata = await fetchProviderMetadata(issuer, context.fetch, options);
+            metadata = await fetchProviderMetadata(issuer, context.fetch, {
+                ...options,
+                timeout: context.timeout,
+                signal: context.signal,
+            });
         } catch (e) {
+            if (context.signal?.aborted) {
+                throw context.signal.reason;
+            }
+
+            if (isVouchlyError(e) && e.code === VouchlyErrorCode.TIMEOUT) {
+                throw e;
+            }
+
             const message = e instanceof Error && e.message ? e.message : 'The provider metadata is unavailable.';
             throw new VouchlyError(VouchlyErrorCode.KEY_UNAVAILABLE, message, { cause: e });
         }

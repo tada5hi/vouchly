@@ -509,3 +509,308 @@ describe('introspection retry after 401', () => {
         expect(stub.requests).toHaveLength(1);
     });
 });
+
+describe('src/introspection timeout', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    function stalledFetch(signals: AbortSignal[] = []) : typeof fetch {
+        return (_input, init) => new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+
+            if (!signal) {
+                return;
+            }
+
+            signals.push(signal);
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+    }
+
+    it('should reject a stalled request as timeout, not introspection_failed', async () => {
+        const error = await expectCode(
+            verifier({ fetch: stalledFetch(), requests: [] }, introspectionIssuer(), { timeout: 0.05 }).verify(JWT),
+            VouchlyErrorCode.TIMEOUT,
+        );
+
+        expect((error as Error).cause).toBeInstanceOf(Error);
+        expect(((error as Error).cause as Error).name).toBe('TimeoutError');
+    });
+
+    it('should take the timeout as an option of introspect', async () => {
+        await expectCode(
+            introspect(JWT, introspectionIssuer(), stalledFetch(), { timeout: 0.05 }),
+            VouchlyErrorCode.TIMEOUT,
+        );
+    });
+
+    it('should not wait for the body of a refused answer to be discarded', async () => {
+        const fetchFn : typeof fetch = async () => {
+            const response = new Response('denied', { status: 500 });
+
+            Object.defineProperty(response, 'body', { value: { cancel: () => new Promise<void>(() => {}) } });
+
+            return response;
+        };
+
+        const error = await expectCode(
+            introspect(JWT, introspectionIssuer(), fetchFn),
+            VouchlyErrorCode.INTROSPECTION_FAILED,
+        );
+
+        expect((error as { status?: number }).status).toBe(500);
+    });
+
+    it('should bound the retry after a 401 on its own', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+        let calls = 0;
+        const signals : AbortSignal[] = [];
+        const stalled = stalledFetch(signals);
+        const issuer = introspectionIssuer({
+            introspection: {
+                endpoint: ENDPOINT,
+                authorization: () => 'Bearer x',
+            },
+        });
+
+        const fetchFn : typeof fetch = async (input, init) => {
+            calls++;
+
+            if (calls === 1) {
+                await new Promise((resolve) => {
+                    setTimeout(resolve, 800);
+                });
+
+                return new Response(null, { status: 401 });
+            }
+
+            return stalled(input, init);
+        };
+
+        const outcome = expectCode(introspect(JWT, issuer, fetchFn, { timeout: 1 }), VouchlyErrorCode.TIMEOUT);
+
+        await vi.advanceTimersByTimeAsync(800);
+        expect(calls).toBe(2);
+
+        // 1799 ms in total, past one timeout, but the retry has its own.
+        await vi.advanceTimersByTimeAsync(999);
+        expect(signals).toHaveLength(1);
+        expect(signals[0]!.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(signals[0]!.aborted).toBe(true);
+
+        await outcome;
+    });
+
+    it('should reject a stalled discovery of the endpoint as timeout', async () => {
+        const issuer = introspectionIssuer({ introspection: { authorization: { clientId: 'client', clientSecret: 'secret' } } });
+
+        await expectCode(
+            introspect(JWT, issuer, stalledFetch(), { timeout: 0.05 }),
+            VouchlyErrorCode.TIMEOUT,
+        );
+    });
+
+    it('should default to 10 seconds', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+        const signals : AbortSignal[] = [];
+        const promise = introspect(JWT, introspectionIssuer(), stalledFetch(signals));
+        const outcome = expectCode(promise, VouchlyErrorCode.TIMEOUT);
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(signals).toHaveLength(1);
+        expect(signals[0]!.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(signals[0]!.aborted).toBe(true);
+
+        await outcome;
+    });
+
+    it('should refuse a timeout that is not a positive number of seconds', async () => {
+        const stub = createStub(activeResponse());
+
+        for (const timeout of [0, -1, NaN, Infinity, 2_147_484]) {
+            await expect(introspect(JWT, introspectionIssuer(), stub.fetch, { timeout })).rejects.toThrow(TypeError);
+        }
+
+        expect(stub.requests).toHaveLength(0);
+    });
+});
+
+describe('src/introspection signal', () => {
+    function stalledFetch(signals: AbortSignal[] = []) : typeof fetch {
+        return (_input, init) => new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+
+            if (!signal) {
+                return;
+            }
+
+            signals.push(signal);
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+    }
+
+    it('should reject with the reason of an abort during the request', async () => {
+        const controller = new AbortController();
+        const reason = new Error('the client went away');
+        const signals : AbortSignal[] = [];
+        const called = Promise.withResolvers<void>();
+        const stalled = stalledFetch(signals);
+        const fetchFn : typeof fetch = (input, init) => {
+            const response = stalled(input, init);
+
+            called.resolve();
+
+            return response;
+        };
+
+        const promise = verifier({ fetch: fetchFn, requests: [] }).verify(JWT, { signal: controller.signal });
+
+        await called.promise;
+        controller.abort(reason);
+
+        await expect(promise).rejects.toBe(reason);
+        expect(signals).toHaveLength(1);
+        expect(signals[0]!.aborted).toBe(true);
+    });
+
+    it('should take the signal as an option of introspect', async () => {
+        const controller = new AbortController();
+        const reason = new Error('stop');
+
+        const promise = introspect(JWT, introspectionIssuer(), stalledFetch(), { signal: controller.signal });
+
+        controller.abort(reason);
+
+        await expect(promise).rejects.toBe(reason);
+    });
+
+    it('should not send a request for an aborted signal', async () => {
+        const stub = createStub(activeResponse());
+        const reason = new Error('already gone');
+        const cache = new MemoryTokenCache();
+        let reads = 0;
+        const get = cache.get.bind(cache);
+
+        cache.get = (key) => {
+            reads++;
+
+            return get(key);
+        };
+
+        await expect(
+            verifier(stub, introspectionIssuer(), { cache, cacheNamespace: 'test' }).verify(JWT, { signal: AbortSignal.abort(reason) }),
+        ).rejects.toBe(reason);
+        await expect(
+            introspect(JWT, introspectionIssuer(), stub.fetch, { signal: AbortSignal.abort(reason) }),
+        ).rejects.toBe(reason);
+
+        expect(stub.requests).toHaveLength(0);
+        expect(reads).toBe(0);
+    });
+
+    it('should send the retry after a 401 with the caller signal', async () => {
+        const controller = new AbortController();
+        const reason = new Error('stop');
+        const signals : AbortSignal[] = [];
+        const stalled = stalledFetch(signals);
+        let calls = 0;
+
+        const fetchFn : typeof fetch = async (input, init) => {
+            calls++;
+
+            if (calls === 1) {
+                return new Response(null, { status: 401 });
+            }
+
+            const response = stalled(input, init);
+
+            controller.abort(reason);
+
+            return response;
+        };
+
+        const issuer = introspectionIssuer({
+            introspection: {
+                endpoint: ENDPOINT,
+                authorization: () => 'Bearer x',
+            },
+        });
+
+        await expect(introspect(JWT, issuer, fetchFn, { signal: controller.signal })).rejects.toBe(reason);
+        expect(calls).toBe(2);
+        expect(signals[0]!.aborted).toBe(true);
+    });
+
+    it('should not cache the result of an aborted call', async () => {
+        const stub = createStub(activeResponse());
+        const controller = new AbortController();
+        const reason = new Error('stop');
+        const cache = new MemoryTokenCache();
+        let writes = 0;
+        const set = cache.set.bind(cache);
+
+        cache.set = (key, entry, ttl) => {
+            writes++;
+
+            return set(key, entry, ttl);
+        };
+
+        const issuer = introspectionIssuer({
+            claims: () => {
+                controller.abort(reason);
+
+                return true;
+            },
+        });
+
+        await expect(
+            verifier(stub, issuer, { cache, cacheNamespace: 'test' }).verify(JWT, { signal: controller.signal }),
+        ).rejects.toBe(reason);
+        expect(writes).toBe(0);
+    });
+
+    it('should stop waiting for a shared discovery without cancelling it', async () => {
+        const controller = new AbortController();
+        const reason = new Error('stop');
+        const discoverySignals : AbortSignal[] = [];
+        const gate = Promise.withResolvers<void>();
+
+        const called = Promise.withResolvers<void>();
+
+        const fetchFn : typeof fetch = async (input, init) => {
+            if (String(input).endsWith('/.well-known/openid-configuration')) {
+                discoverySignals.push(init!.signal!);
+                called.resolve();
+
+                await gate.promise;
+
+                return Response.json({ issuer: ISSUER, introspection_endpoint: ENDPOINT });
+            }
+
+            return activeResponse()();
+        };
+
+        const issuer = introspectionIssuer({ introspection: { authorization: { clientId: 'client', clientSecret: 'secret' } } });
+
+        const aborted = introspect(JWT, issuer, fetchFn, { signal: controller.signal });
+        const other = introspect(JWT, issuer, fetchFn);
+
+        await called.promise;
+        controller.abort(reason);
+
+        await expect(aborted).rejects.toBe(reason);
+
+        gate.resolve();
+
+        await expect(other).resolves.toMatchObject({ sub: 'user' });
+        expect(discoverySignals).toHaveLength(1);
+        expect(discoverySignals[0]!.aborted).toBe(false);
+    });
+});

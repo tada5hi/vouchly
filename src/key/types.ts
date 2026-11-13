@@ -6,6 +6,18 @@ export type KeySourceContext = {
     token: ParsedToken,
     issuer: Issuer,
     fetch: typeof fetch,
+    /**
+     * Seconds a request of the source may take: the verifier's timeout. The
+     * discovery source applies it to the metadata request, not to the JWKS
+     * request, which keeps jose's timeoutDuration.
+     */
+    timeout?: number,
+    /**
+     * The caller's signal of this verification. Work shared between
+     * verifications must not be cancelled by it, only stop waiting; inside a
+     * cachedKeys load it is the load's own deadline instead.
+     */
+    signal?: AbortSignal,
 };
 
 export type KeySource = (context: KeySourceContext) => Promise<CryptoKey | JWK>;

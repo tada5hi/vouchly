@@ -1,7 +1,14 @@
-import type { DiscoveryOptions, ProviderMetadata } from './types';
+import { VouchlyErrorCode, isVouchlyError } from '../error';
+import type { DeadlineSignal } from '../signal';
+import {
+    createDeadlineSignal,
+    createTimeoutError,
+    resolveTimeout,
+    waitWithin,
+} from '../signal';
+import type { FetchProviderMetadataOptions, ProviderMetadata } from './types';
 
 const CACHE_MAX_AGE = 600;
-const TIMEOUT = 10_000;
 const FAILURE_COOLDOWN = 30_000;
 
 type MetadataItem = {
@@ -9,11 +16,24 @@ type MetadataItem = {
     fetchedAt: number,
 };
 
+type MetadataFlight = {
+    promise: Promise<ProviderMetadata>,
+    /**
+     * Ends with the latest deadline of the callers that waited for it.
+     */
+    deadline: DeadlineSignal,
+};
+
+type MetadataFailure = {
+    failedAt: number,
+    timedOut: boolean,
+};
+
 // Keyed by fetch implementation, then by the configured issuer string, so
 // two verifiers with different fetch functions never share an answer.
 const items = new WeakMap<typeof fetch, Map<string, MetadataItem>>();
-const flights = new WeakMap<typeof fetch, Map<string, Promise<ProviderMetadata>>>();
-const failures = new WeakMap<typeof fetch, Map<string, number>>();
+const flights = new WeakMap<typeof fetch, Map<string, MetadataFlight>>();
+const failures = new WeakMap<typeof fetch, Map<string, MetadataFailure>>();
 
 function scope<T>(store: WeakMap<typeof fetch, Map<string, T>>, fetchFn: typeof globalThis.fetch) : Map<string, T> {
     let map = store.get(fetchFn);
@@ -34,19 +54,31 @@ function isURL(input: unknown) : input is string {
     return typeof input === 'string' && URL.canParse(input);
 }
 
-async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<ProviderMetadata> {
+async function request(url: string, fetchFn: typeof globalThis.fetch, signal: AbortSignal) : Promise<unknown> {
+    try {
+        const response = await fetchFn(url, {
+            headers: { accept: 'application/json' },
+            signal,
+        });
+
+        if (!response.ok) {
+            throw new Error(`The provider metadata request answered ${response.status}.`);
+        }
+
+        return await response.json();
+    } catch (e) {
+        if (signal.aborted) {
+            throw createTimeoutError('The provider metadata request timed out.', e);
+        }
+
+        throw e;
+    }
+}
+
+async function load(issuer: string, fetchFn: typeof globalThis.fetch, signal: AbortSignal) : Promise<ProviderMetadata> {
     const url = `${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`;
 
-    const response = await fetchFn(url, {
-        headers: { accept: 'application/json' },
-        signal: AbortSignal.timeout(TIMEOUT),
-    });
-
-    if (!response.ok) {
-        throw new Error(`The provider metadata request answered ${response.status}.`);
-    }
-
-    const body : unknown = await response.json();
+    const body : unknown = await request(url, fetchFn, signal);
 
     if (!isRecord(body)) {
         throw new Error('The provider metadata is not a JSON object.');
@@ -82,14 +114,19 @@ async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<
  * Reads `<issuer>/.well-known/openid-configuration`. The issuer must come
  * from configuration, never from a token. Answers are reused for
  * cacheMaxAge seconds; after a failure, the issuer is not asked again for
- * 30 seconds and calls fail fast instead.
+ * 30 seconds and calls fail fast instead, as TIMEOUT after a timeout.
+ * Concurrent calls share one request: each waits for at most its own
+ * timeout, and the request runs until the latest of their deadlines.
  */
 export async function fetchProviderMetadata(
     issuer: string,
     fetchFn: typeof globalThis.fetch,
-    options: DiscoveryOptions = {},
+    options: FetchProviderMetadataOptions = {},
 ) : Promise<ProviderMetadata> {
     const cacheMaxAge = options.cacheMaxAge ?? CACHE_MAX_AGE;
+    const timeout = resolveTimeout(options.timeout, 'discovery timeout');
+
+    options.signal?.throwIfAborted();
 
     const cached = scope(items, fetchFn);
     const item = cached.get(issuer);
@@ -99,36 +136,55 @@ export async function fetchProviderMetadata(
     }
 
     const failed = scope(failures, fetchFn);
-    const failedAt = failed.get(issuer);
+    const failure = failed.get(issuer);
 
-    if (typeof failedAt === 'number') {
-        if (Date.now() - failedAt < FAILURE_COOLDOWN) {
-            throw new Error('The provider metadata failed to load recently, not trying again yet.');
+    if (failure) {
+        if (Date.now() - failure.failedAt < FAILURE_COOLDOWN) {
+            const message = 'The provider metadata failed to load recently, not trying again yet.';
+
+            throw failure.timedOut ? createTimeoutError(message, undefined) : new Error(message);
         }
 
         failed.delete(issuer);
     }
 
+    const deadline = Date.now() + (timeout * 1000);
     const pending = scope(flights, fetchFn);
     let flight = pending.get(issuer);
 
-    if (!flight) {
-        flight = load(issuer, fetchFn)
+    if (flight) {
+        flight.deadline.extend(deadline);
+    } else {
+        const bound = createDeadlineSignal(deadline);
+        const promise : Promise<ProviderMetadata> = load(issuer, fetchFn, bound.signal)
             .then((metadata) => {
                 cached.set(issuer, { metadata, fetchedAt: Date.now() });
 
                 return metadata;
             }, (e: unknown) => {
-                failed.set(issuer, Date.now());
+                failed.set(issuer, {
+                    failedAt: Date.now(),
+                    timedOut: isVouchlyError(e) && e.code === VouchlyErrorCode.TIMEOUT,
+                });
 
                 throw e;
             })
             .finally(() => {
-                pending.delete(issuer);
+                bound.clear();
+
+                if (pending.get(issuer) === flight) {
+                    pending.delete(issuer);
+                }
             });
 
+        flight = { promise, deadline: bound };
         pending.set(issuer, flight);
     }
 
-    return structuredClone(await flight);
+    return structuredClone(await waitWithin(
+        flight.promise,
+        timeout,
+        'The provider metadata request timed out.',
+        options.signal,
+    ));
 }

@@ -18,6 +18,7 @@ import {
     MemoryTokenCache,
     Verifier,
     VouchlyErrorCode,
+    cachedKeys,
     createVerifier,
     isVouchlyError,
     staticKeys,
@@ -621,5 +622,229 @@ describe('src/verifier', () => {
         expect(() => new Verifier({ issuers: [] })).toThrow(TypeError);
 
         expect(() => createVerifier({ issuers: [{ issuer: () => true, verification: 'remote' }] })).not.toThrow();
+    });
+
+    it('should refuse a timeout that is not a positive number of seconds', () => {
+        for (const timeout of [0, -1, NaN, Infinity, -Infinity, 2_147_484]) {
+            expect(() => new Verifier({ issuers: [{ issuer: ISSUER }], timeout })).toThrow(TypeError);
+        }
+
+        expect(() => new Verifier({ issuers: [{ issuer: ISSUER }], timeout: 0.5 })).not.toThrow();
+    });
+
+    it('should reject a key load that runs out of time as timeout', async () => {
+        const key = await createSigningKey('k1');
+        const verifier = createVerifier({
+            issuers: [{
+                issuer: ISSUER,
+                keys: cachedKeys(() => new Promise<JWK>(() => {}), { key: () => 'k1', timeout: 0.05 }),
+            }],
+        });
+
+        await expectCode(verifier.verify(await sign(key)), VouchlyErrorCode.TIMEOUT);
+    });
+
+    it('should reject a stalled discovery of the keys as timeout', async () => {
+        const key = await createSigningKey('k1');
+        const verifier = createVerifier({
+            issuers: [{ issuer: 'https://stalled.example' }],
+            timeout: 0.05,
+            fetch: (_input, init) => new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () => reject(init.signal!.reason), { once: true });
+            }),
+        });
+
+        await expectCode(
+            verifier.verify(await sign(key, { claims: { iss: 'https://stalled.example' } })),
+            VouchlyErrorCode.TIMEOUT,
+        );
+    });
+
+    describe('signal', () => {
+        it('should not touch the key source for an aborted signal', async () => {
+            const key = await createSigningKey('k1');
+            const keys = countingKeys([key.jwk]);
+            const reason = new Error('gone');
+            const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: keys.source }] });
+
+            await expect(verifier.verify(await sign(key), { signal: AbortSignal.abort(reason) })).rejects.toBe(reason);
+            expect(keys.calls()).toBe(0);
+        });
+
+        it('should hand the caller signal to an uncached key source', async () => {
+            const key = await createSigningKey('k1');
+            const inner = staticKeys([key.jwk]);
+            const controller = new AbortController();
+            const signals : (AbortSignal | undefined)[] = [];
+            const verifier = createVerifier({
+                issuers: [{
+                    issuer: ISSUER,
+                    keys: (context) => {
+                        signals.push(context.signal);
+
+                        return inner(context);
+                    },
+                }],
+            });
+
+            await verifier.verify(await sign(key), { signal: controller.signal });
+            expect(signals).toEqual([controller.signal]);
+        });
+
+        it('should stop waiting for a cache read that never settles', async () => {
+            const key = await createSigningKey('k1');
+            const controller = new AbortController();
+            const reason = new Error('stop');
+            const verifier = createVerifier({
+                issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }],
+                cache: {
+                    get: () => new Promise<undefined>(() => {}),
+                    set: async () => undefined,
+                },
+                cacheNamespace: 'pending-read',
+            });
+
+            const promise = verifier.verify(await sign(key), { signal: controller.signal });
+
+            controller.abort(reason);
+
+            await expect(promise).rejects.toBe(reason);
+        });
+
+        it('should stop waiting for a claims predicate that never settles', async () => {
+            const key = await createSigningKey('k1');
+            const controller = new AbortController();
+            const reason = new Error('stop');
+            const called = Promise.withResolvers<void>();
+            const verifier = createVerifier({
+                issuers: [{
+                    issuer: ISSUER,
+                    keys: staticKeys([key.jwk]),
+                    claims: () => {
+                        called.resolve();
+
+                        return new Promise<boolean>(() => {});
+                    },
+                }],
+                cache: false,
+            });
+
+            const promise = verifier.verify(await sign(key), { signal: controller.signal });
+
+            await called.promise;
+            controller.abort(reason);
+
+            await expect(promise).rejects.toBe(reason);
+        });
+
+        it('should reject a cached result when the signal aborts while the binding resolves', async () => {
+            const key = await createSigningKey('k1');
+            const controller = new AbortController();
+            const reason = new Error('stop');
+            const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: staticKeys([key.jwk]) }] });
+            const thumbprint = 'bwcK0esc3ACC3DB2Y5_lESsXE8o9ltc05O89jdN-dg2';
+            const token = await sign(key, { claims: { cnf: { 'x5t#S256': thumbprint } } });
+
+            await verifier.verify(token, { certificateThumbprint: thumbprint });
+
+            const promise = verifier.verify(token, {
+                signal: controller.signal,
+                certificateThumbprint: () => {
+                    controller.abort(reason);
+
+                    return thumbprint;
+                },
+            });
+
+            await expect(promise).rejects.toBe(reason);
+        });
+
+        it('should stop waiting for a key source that ignores the signal', async () => {
+            const key = await createSigningKey('k1');
+            const controller = new AbortController();
+            const reason = new Error('stop');
+            const verifier = createVerifier({ issuers: [{ issuer: ISSUER, keys: () => new Promise<JWK>(() => {}) }] });
+
+            const promise = verifier.verify(await sign(key), { signal: controller.signal });
+
+            controller.abort(reason);
+
+            await expect(promise).rejects.toBe(reason);
+        });
+
+        it('should keep a shared key load going for the others when one caller aborts', async () => {
+            const key = await createSigningKey('k1');
+            const controller = new AbortController();
+            const reason = new Error('stop');
+            const loadSignals : (AbortSignal | undefined)[] = [];
+            let loads = 0;
+            const gate = Promise.withResolvers<void>();
+            const called = Promise.withResolvers<void>();
+
+            const verifier = createVerifier({
+                issuers: [{
+                    issuer: ISSUER,
+                    keys: cachedKeys(async (context) => {
+                        loads++;
+                        loadSignals.push(context.signal);
+                        called.resolve();
+
+                        await gate.promise;
+
+                        return key.jwk;
+                    }, { key: () => 'k1' }),
+                }],
+                cache: false,
+            });
+
+            const first = verifier.verify(await sign(key, { claims: { sub: 'first' } }), { signal: controller.signal });
+            const second = verifier.verify(await sign(key, { claims: { sub: 'second' } }));
+
+            await called.promise;
+            controller.abort(reason);
+
+            await expect(first).rejects.toBe(reason);
+
+            gate.resolve();
+
+            const result = await second;
+
+            expect(result.claims.sub).toBe('second');
+            expect(loads).toBe(1);
+            expect(loadSignals[0]).not.toBe(controller.signal);
+            expect(loadSignals[0]!.aborted).toBe(false);
+        });
+
+        it('should not cache the result of an aborted call', async () => {
+            const key = await createSigningKey('k1');
+            const controller = new AbortController();
+            const reason = new Error('stop');
+            const cache = new MemoryTokenCache();
+            let writes = 0;
+            const set = cache.set.bind(cache);
+
+            cache.set = (cacheKey, entry, ttl) => {
+                writes++;
+
+                return set(cacheKey, entry, ttl);
+            };
+
+            const verifier = createVerifier({
+                issuers: [{
+                    issuer: ISSUER,
+                    keys: staticKeys([key.jwk]),
+                    claims: () => {
+                        controller.abort(reason);
+
+                        return true;
+                    },
+                }],
+                cache,
+                cacheNamespace: 'test',
+            });
+
+            await expect(verifier.verify(await sign(key), { signal: controller.signal })).rejects.toBe(reason);
+            expect(writes).toBe(0);
+        });
     });
 });

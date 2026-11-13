@@ -13,3 +13,17 @@ export type DiscoveryOptions = {
      */
     cacheMaxAge?: number,
 };
+
+export type FetchProviderMetadataOptions = DiscoveryOptions & {
+    /**
+     * Seconds this call waits for the metadata request, default 10. Calls
+     * sharing one request each wait for their own timeout; the request runs
+     * until the latest of their deadlines.
+     */
+    timeout?: number,
+    /**
+     * Stops this call waiting: it rejects with the signal's reason, while the
+     * shared request goes on for the other callers.
+     */
+    signal?: AbortSignal,
+};

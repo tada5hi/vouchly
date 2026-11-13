@@ -257,3 +257,143 @@ describe('src/discovery', () => {
         ]);
     });
 });
+
+describe('src/discovery timeout', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    type ControlledFetch = {
+        fetch: typeof fetch,
+        signals: AbortSignal[],
+        answer: () => void,
+    };
+
+    function controlledFetch(issuer: string) : ControlledFetch {
+        const signals : AbortSignal[] = [];
+        const gate = Promise.withResolvers<void>();
+
+        return {
+            signals,
+            answer: () => gate.resolve(),
+            fetch: async (_input, init) => {
+                const signal = init!.signal!;
+
+                signals.push(signal);
+
+                await new Promise<void>((resolve, reject) => {
+                    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+                    gate.promise.then(resolve, reject);
+                });
+
+                return Response.json({ issuer, introspection_endpoint: `${issuer}/introspect` });
+            },
+        };
+    }
+
+    async function settled(promise: Promise<unknown>) : Promise<() => unknown> {
+        let outcome : unknown = 'pending';
+
+        promise.then((value) => {
+            outcome = value;
+        }, (e: unknown) => {
+            outcome = e;
+        });
+
+        await vi.advanceTimersByTimeAsync(0);
+
+        return () => outcome;
+    }
+
+    function codeOf(value: unknown) : unknown {
+        return isVouchlyError(value) ? value.code : value;
+    }
+
+    it('should bound a waiter joining a longer shared request by its own timeout', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+        const issuer = 'https://long-first.example';
+        const provider = controlledFetch(issuer);
+
+        const long = await settled(fetchProviderMetadata(issuer, provider.fetch, { timeout: 60 }));
+        const short = await settled(fetchProviderMetadata(issuer, provider.fetch, { timeout: 1 }));
+
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(codeOf(short())).toBe(VouchlyErrorCode.TIMEOUT);
+        expect(long()).toBe('pending');
+        expect(provider.signals).toHaveLength(1);
+        expect(provider.signals[0]!.aborted).toBe(false);
+
+        provider.answer();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(long()).toMatchObject({ issuer });
+    });
+
+    it('should keep a shared request going for a waiter with a longer timeout than its starter', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+        const issuer = 'https://short-first.example';
+        const provider = controlledFetch(issuer);
+
+        const short = await settled(fetchProviderMetadata(issuer, provider.fetch, { timeout: 1 }));
+        const long = await settled(fetchProviderMetadata(issuer, provider.fetch, { timeout: 60 }));
+
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(codeOf(short())).toBe(VouchlyErrorCode.TIMEOUT);
+        expect(long()).toBe('pending');
+        expect(provider.signals[0]!.aborted).toBe(false);
+
+        provider.answer();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(long()).toMatchObject({ issuer });
+
+        const again = await fetchProviderMetadata(issuer, provider.fetch, { timeout: 1 });
+
+        expect(again).toMatchObject({ issuer });
+        expect(provider.signals).toHaveLength(1);
+    });
+
+    it('should cancel a shared request once the longest waiter bound ran out', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+        const issuer = 'https://bounded.example';
+        const provider = controlledFetch(issuer);
+
+        const short = await settled(fetchProviderMetadata(issuer, provider.fetch, { timeout: 1 }));
+        const long = await settled(fetchProviderMetadata(issuer, provider.fetch, { timeout: 5 }));
+
+        await vi.advanceTimersByTimeAsync(4_999);
+
+        expect(codeOf(short())).toBe(VouchlyErrorCode.TIMEOUT);
+        expect(long()).toBe('pending');
+        expect(provider.signals[0]!.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(codeOf(long())).toBe(VouchlyErrorCode.TIMEOUT);
+        expect(provider.signals[0]!.aborted).toBe(true);
+    });
+
+    it('should keep reporting timeout during the cooldown after a timed-out request', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+        const issuer = 'https://cooldown.example';
+        const provider = controlledFetch(issuer);
+
+        const first = await settled(fetchProviderMetadata(issuer, provider.fetch, { timeout: 1 }));
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(codeOf(first())).toBe(VouchlyErrorCode.TIMEOUT);
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        const error = await fetchProviderMetadata(issuer, provider.fetch, { timeout: 1 }).catch((e: unknown) => e);
+
+        expect(codeOf(error)).toBe(VouchlyErrorCode.TIMEOUT);
+        expect(provider.signals).toHaveLength(1);
+    });
+});

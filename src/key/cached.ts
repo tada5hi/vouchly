@@ -1,4 +1,5 @@
 import type { JWK } from 'jose';
+import { abortable, createTimeoutError, createTimeoutSignal } from '../signal';
 import type { CachedKeysOptions, KeySource, KeySourceContext } from './types';
 
 type CachedKeysItem = {
@@ -32,6 +33,8 @@ export function cachedKeys(
     const flights = new Map<string, Promise<JWK>>();
 
     return async (context) => {
+        context.signal?.throwIfAborted();
+
         const key = options.key(context);
 
         const item = items.get(key);
@@ -46,22 +49,23 @@ export function cachedKeys(
 
         const pending = flights.get(key);
 
+        // The flight is shared, so a caller's signal only stops its own wait.
         if (pending) {
-            return structuredClone(await pending);
+            return structuredClone(await abortable(pending, context.signal));
         }
 
-        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timer = createTimeoutSignal(timeout);
         const deadline = new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(() => {
-                reject(new Error('Loading the key timed out.'));
-            }, timeout * 1000);
+            timer.signal.addEventListener('abort', () => {
+                reject(createTimeoutError('Loading the key timed out.', timer.signal.reason));
+            }, { once: true });
         });
 
         // A stalled load must not pin every later lookup of the key: the
-        // flight settles at the deadline, and a load finishing after it is
-        // dropped instead of stored.
+        // flight settles at the deadline, the load's signal aborts, and a
+        // load finishing after it is dropped instead of stored.
         const flight : Promise<JWK> = Promise.race([
-            Promise.resolve().then(() => load(context)),
+            Promise.resolve().then(() => load({ ...context, signal: timer.signal })),
             deadline,
         ])
             .then((jwk) => {
@@ -86,7 +90,7 @@ export function cachedKeys(
                 return jwk;
             })
             .finally(() => {
-                clearTimeout(timer);
+                timer.clear();
 
                 if (flights.get(key) === flight) {
                     flights.delete(key);
@@ -95,6 +99,6 @@ export function cachedKeys(
 
         flights.set(key, flight);
 
-        return structuredClone(await flight);
+        return structuredClone(await abortable(flight, context.signal));
     };
 }
