@@ -546,6 +546,8 @@ describe('src/introspection timeout', () => {
     });
 
     it('should bound the retry after a 401 on its own', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
         let calls = 0;
         const signals : AbortSignal[] = [];
         const stalled = stalledFetch(signals);
@@ -561,7 +563,7 @@ describe('src/introspection timeout', () => {
 
             if (calls === 1) {
                 await new Promise((resolve) => {
-                    setTimeout(resolve, 30);
+                    setTimeout(resolve, 800);
                 });
 
                 return new Response(null, { status: 401 });
@@ -570,9 +572,20 @@ describe('src/introspection timeout', () => {
             return stalled(input, init);
         };
 
-        await expectCode(introspect(JWT, issuer, fetchFn, { timeout: 0.05 }), VouchlyErrorCode.TIMEOUT);
+        const outcome = expectCode(introspect(JWT, issuer, fetchFn, { timeout: 1 }), VouchlyErrorCode.TIMEOUT);
+
+        await vi.advanceTimersByTimeAsync(800);
         expect(calls).toBe(2);
+
+        // 1799 ms in total, past one timeout, but the retry has its own.
+        await vi.advanceTimersByTimeAsync(999);
         expect(signals).toHaveLength(1);
+        expect(signals[0]!.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(signals[0]!.aborted).toBe(true);
+
+        await outcome;
     });
 
     it('should reject a stalled discovery of the endpoint as timeout', async () => {
@@ -630,12 +643,19 @@ describe('src/introspection signal', () => {
         const controller = new AbortController();
         const reason = new Error('the client went away');
         const signals : AbortSignal[] = [];
+        const called = Promise.withResolvers<void>();
+        const stalled = stalledFetch(signals);
+        const fetchFn : typeof fetch = (input, init) => {
+            const response = stalled(input, init);
 
-        const promise = verifier({ fetch: stalledFetch(signals), requests: [] }).verify(JWT, { signal: controller.signal });
+            called.resolve();
 
-        await new Promise((resolve) => {
-            setTimeout(resolve, 10);
-        });
+            return response;
+        };
+
+        const promise = verifier({ fetch: fetchFn, requests: [] }).verify(JWT, { signal: controller.signal });
+
+        await called.promise;
         controller.abort(reason);
 
         await expect(promise).rejects.toBe(reason);
@@ -692,9 +712,11 @@ describe('src/introspection signal', () => {
                 return new Response(null, { status: 401 });
             }
 
-            setTimeout(() => controller.abort(reason), 10);
+            const response = stalled(input, init);
 
-            return stalled(input, init);
+            controller.abort(reason);
+
+            return response;
         };
 
         const issuer = introspectionIssuer({
@@ -743,9 +765,12 @@ describe('src/introspection signal', () => {
         const discoverySignals : AbortSignal[] = [];
         const gate = Promise.withResolvers<void>();
 
+        const called = Promise.withResolvers<void>();
+
         const fetchFn : typeof fetch = async (input, init) => {
             if (String(input).endsWith('/.well-known/openid-configuration')) {
                 discoverySignals.push(init!.signal!);
+                called.resolve();
 
                 await gate.promise;
 
@@ -760,9 +785,7 @@ describe('src/introspection signal', () => {
         const aborted = introspect(JWT, issuer, fetchFn, { signal: controller.signal });
         const other = introspect(JWT, issuer, fetchFn);
 
-        await new Promise((resolve) => {
-            setTimeout(resolve, 10);
-        });
+        await called.promise;
         controller.abort(reason);
 
         await expect(aborted).rejects.toBe(reason);

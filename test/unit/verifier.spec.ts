@@ -711,6 +711,7 @@ describe('src/verifier', () => {
             const loadSignals : (AbortSignal | undefined)[] = [];
             let loads = 0;
             const gate = Promise.withResolvers<void>();
+            const called = Promise.withResolvers<void>();
 
             const verifier = createVerifier({
                 issuers: [{
@@ -718,6 +719,7 @@ describe('src/verifier', () => {
                     keys: cachedKeys(async (context) => {
                         loads++;
                         loadSignals.push(context.signal);
+                        called.resolve();
 
                         await gate.promise;
 
@@ -730,9 +732,7 @@ describe('src/verifier', () => {
             const first = verifier.verify(await sign(key, { claims: { sub: 'first' } }), { signal: controller.signal });
             const second = verifier.verify(await sign(key, { claims: { sub: 'second' } }));
 
-            await new Promise((resolve) => {
-                setTimeout(resolve, 10);
-            });
+            await called.promise;
             controller.abort(reason);
 
             await expect(first).rejects.toBe(reason);
