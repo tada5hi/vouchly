@@ -9,6 +9,7 @@ import { introspect } from '../introspection';
 import type { KeySource } from '../key';
 import { discovery, resolveVerificationKey } from '../key';
 import type { ParsedToken } from '../token';
+import { resolveTimeout } from '../signal';
 import { isCompactToken, parseToken } from '../token';
 import { resolveCertificateBinding } from './binding';
 import type {
@@ -198,6 +199,8 @@ export class Verifier implements IVerifier {
 
     protected cacheNamespace: string;
 
+    protected timeout: number;
+
     constructor(options: VerifierOptions) {
         this.records = buildRecords(options);
 
@@ -227,6 +230,7 @@ export class Verifier implements IVerifier {
         this.cacheNamespace = options.cacheNamespace ?? '';
 
         this.fetch = options.fetch ?? defaultFetch;
+        this.timeout = resolveTimeout(options.timeout, 'verifier timeout');
     }
 
     async verify(token: string, options: VerifyOptions = {}) : Promise<VerifyResult> {
@@ -317,6 +321,7 @@ export class Verifier implements IVerifier {
             token,
             issuer,
             fetch: this.fetch,
+            timeout: this.timeout,
         });
 
         const algorithms = issuer.algorithms ?? deriveAlgorithms(key);
@@ -373,7 +378,7 @@ export class Verifier implements IVerifier {
         token: string,
         record: IssuerRecord,
     ) : Promise<JWTPayload> {
-        const claims = await introspect(token, record.issuer, this.fetch);
+        const claims = await introspect(token, record.issuer, this.fetch, { timeout: this.timeout });
 
         assertAudience(record.issuer, claims);
         await this.assertClaimsPredicate(record.issuer, claims);

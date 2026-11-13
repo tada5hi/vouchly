@@ -1,7 +1,7 @@
-import type { DiscoveryOptions, ProviderMetadata } from './types';
+import { createTimeoutError, createTimeoutSignal, resolveTimeout } from '../signal';
+import type { FetchProviderMetadataOptions, ProviderMetadata } from './types';
 
 const CACHE_MAX_AGE = 600;
-const TIMEOUT = 10_000;
 const FAILURE_COOLDOWN = 30_000;
 
 type MetadataItem = {
@@ -34,19 +34,35 @@ function isURL(input: unknown) : input is string {
     return typeof input === 'string' && URL.canParse(input);
 }
 
-async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<ProviderMetadata> {
+async function request(url: string, fetchFn: typeof globalThis.fetch, timeout: number) : Promise<unknown> {
+    const timer = createTimeoutSignal(timeout);
+
+    try {
+        const response = await fetchFn(url, {
+            headers: { accept: 'application/json' },
+            signal: timer.signal,
+        });
+
+        if (!response.ok) {
+            throw new Error(`The provider metadata request answered ${response.status}.`);
+        }
+
+        return await response.json();
+    } catch (e) {
+        if (timer.signal.aborted) {
+            throw createTimeoutError('The provider metadata request timed out.', e);
+        }
+
+        throw e;
+    } finally {
+        timer.clear();
+    }
+}
+
+async function load(issuer: string, fetchFn: typeof globalThis.fetch, timeout: number) : Promise<ProviderMetadata> {
     const url = `${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`;
 
-    const response = await fetchFn(url, {
-        headers: { accept: 'application/json' },
-        signal: AbortSignal.timeout(TIMEOUT),
-    });
-
-    if (!response.ok) {
-        throw new Error(`The provider metadata request answered ${response.status}.`);
-    }
-
-    const body : unknown = await response.json();
+    const body : unknown = await request(url, fetchFn, timeout);
 
     if (!isRecord(body)) {
         throw new Error('The provider metadata is not a JSON object.');
@@ -87,9 +103,10 @@ async function load(issuer: string, fetchFn: typeof globalThis.fetch) : Promise<
 export async function fetchProviderMetadata(
     issuer: string,
     fetchFn: typeof globalThis.fetch,
-    options: DiscoveryOptions = {},
+    options: FetchProviderMetadataOptions = {},
 ) : Promise<ProviderMetadata> {
     const cacheMaxAge = options.cacheMaxAge ?? CACHE_MAX_AGE;
+    const timeout = resolveTimeout(options.timeout, 'discovery timeout');
 
     const cached = scope(items, fetchFn);
     const item = cached.get(issuer);
@@ -113,7 +130,7 @@ export async function fetchProviderMetadata(
     let flight = pending.get(issuer);
 
     if (!flight) {
-        flight = load(issuer, fetchFn)
+        flight = load(issuer, fetchFn, timeout)
             .then((metadata) => {
                 cached.set(issuer, { metadata, fetchedAt: Date.now() });
 

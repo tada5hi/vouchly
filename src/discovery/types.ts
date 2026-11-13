@@ -13,3 +13,11 @@ export type DiscoveryOptions = {
      */
     cacheMaxAge?: number,
 };
+
+export type FetchProviderMetadataOptions = DiscoveryOptions & {
+    /**
+     * Seconds the metadata request may take, default 10. It bounds the one
+     * request shared by concurrent calls, so the call starting it decides.
+     */
+    timeout?: number,
+};

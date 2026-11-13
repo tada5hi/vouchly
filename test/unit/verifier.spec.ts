@@ -18,6 +18,7 @@ import {
     MemoryTokenCache,
     Verifier,
     VouchlyErrorCode,
+    cachedKeys,
     createVerifier,
     isVouchlyError,
     staticKeys,
@@ -621,5 +622,41 @@ describe('src/verifier', () => {
         expect(() => new Verifier({ issuers: [] })).toThrow(TypeError);
 
         expect(() => createVerifier({ issuers: [{ issuer: () => true, verification: 'remote' }] })).not.toThrow();
+    });
+
+    it('should refuse a timeout that is not a positive number of seconds', () => {
+        for (const timeout of [0, -1, NaN, Infinity, -Infinity, 2_147_484]) {
+            expect(() => new Verifier({ issuers: [{ issuer: ISSUER }], timeout })).toThrow(TypeError);
+        }
+
+        expect(() => new Verifier({ issuers: [{ issuer: ISSUER }], timeout: 0.5 })).not.toThrow();
+    });
+
+    it('should reject a key load that runs out of time as timeout', async () => {
+        const key = await createSigningKey('k1');
+        const verifier = createVerifier({
+            issuers: [{
+                issuer: ISSUER,
+                keys: cachedKeys(() => new Promise<JWK>(() => {}), { key: () => 'k1', timeout: 0.05 }),
+            }],
+        });
+
+        await expectCode(verifier.verify(await sign(key)), VouchlyErrorCode.TIMEOUT);
+    });
+
+    it('should reject a stalled discovery of the keys as timeout', async () => {
+        const key = await createSigningKey('k1');
+        const verifier = createVerifier({
+            issuers: [{ issuer: 'https://stalled.example' }],
+            timeout: 0.05,
+            fetch: (_input, init) => new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () => reject(init.signal!.reason), { once: true });
+            }),
+        });
+
+        await expectCode(
+            verifier.verify(await sign(key, { claims: { iss: 'https://stalled.example' } })),
+            VouchlyErrorCode.TIMEOUT,
+        );
     });
 });

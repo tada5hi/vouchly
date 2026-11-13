@@ -24,6 +24,11 @@ export type VerifierOptions = {
      * The Issuer.id that introspects tokens which are not compact JWTs.
      */
     opaque?: string,
+    /**
+     * Seconds each introspection or discovery request may take, default 10.
+     * Must be a finite number above 0 and at most 2147483.
+     */
+    timeout?: number,
 };
 
 export type VerifyOptions = {

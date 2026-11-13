@@ -6,6 +6,15 @@ export type KeySourceContext = {
     token: ParsedToken,
     issuer: Issuer,
     fetch: typeof fetch,
+    /**
+     * Seconds a request of the source may take: the verifier's timeout.
+     */
+    timeout?: number,
+    /**
+     * Aborts when the request of the source ran into its time limit: in a
+     * cachedKeys load, the load's deadline.
+     */
+    signal?: AbortSignal,
 };
 
 export type KeySource = (context: KeySourceContext) => Promise<CryptoKey | JWK>;

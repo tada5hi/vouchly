@@ -1,5 +1,5 @@
 import type { CryptoKey, JWK } from 'jose';
-import { importJWK } from 'jose';
+import { errors, importJWK } from 'jose';
 import { VouchlyError, VouchlyErrorCode, isVouchlyError } from '../error';
 import { assertCryptoKeyPolicy, assertJWKPolicy } from './policy';
 import type { KeySource, KeySourceContext } from './types';
@@ -30,15 +30,23 @@ async function resolve(source: KeySource, context: KeySourceContext) : Promise<C
 }
 
 /**
- * Resolves the key a token is verified with. Every failure, including a key
- * the policy refuses, is a KEY_UNAVAILABLE VouchlyError.
+ * Resolves the key a token is verified with. A request that ran out of time
+ * is a TIMEOUT VouchlyError; every other failure, including a key the policy
+ * refuses, is a KEY_UNAVAILABLE VouchlyError.
  */
 export async function resolveVerificationKey(source: KeySource, context: KeySourceContext) : Promise<CryptoKey> {
     try {
         return await resolve(source, context);
     } catch (e) {
-        if (isVouchlyError(e) && e.code === VouchlyErrorCode.KEY_UNAVAILABLE) {
+        if (
+            isVouchlyError(e) &&
+            (e.code === VouchlyErrorCode.KEY_UNAVAILABLE || e.code === VouchlyErrorCode.TIMEOUT)
+        ) {
             throw e;
+        }
+
+        if (e instanceof errors.JWKSTimeout) {
+            throw new VouchlyError(VouchlyErrorCode.TIMEOUT, 'The JWKS request timed out.', { cause: e });
         }
 
         const message = e instanceof Error && e.message ?

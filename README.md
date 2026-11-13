@@ -155,7 +155,7 @@ const verifier = createVerifier({
 ```
 
 - The loader only builds URLs from your own `baseUrl`. Never fetch from a URL taken out of the token.
-- `cachedKeys` shares one in-flight load per cache key, keeps a key for `ttl` seconds (default 300), gives up after `timeout` seconds (default 10) and holds at most `max` keys (default 100, an integer of at least 1). A failed load is never cached.
+- `cachedKeys` shares one in-flight load per cache key, keeps a key for `ttl` seconds (default 300), gives up after `timeout` seconds (default 10) and holds at most `max` keys (default 100, an integer of at least 1). A failed load is never cached. A load that runs out of time fails as `timeout`, and the `signal` in the loader's context aborts at that deadline, so hand it to your request.
 - Whatever a key source returns still passes the key policy: a JWK with `kty: oct`, a `use` other than `sig`, or an RSA key under 2048 bits fails as `key_unavailable`.
 
 ### Key sources
@@ -163,11 +163,11 @@ const verifier = createVerifier({
 | Source | Use it for |
 |--------|------------|
 | `discovery({ cacheMaxAge })` | Default for a string `issuer`. Reads `jwks_uri` from `<issuer>/.well-known/openid-configuration`, which must name the same `issuer`. Metadata is reused for `cacheMaxAge` seconds (default 600); after a failed fetch the issuer is not asked again for 30 seconds, and keys fail fast as `key_unavailable` meanwhile. |
-| `jwks(url, { cacheMaxAge, cooldownDuration, timeoutDuration })` | A known JWKS URL. Wraps jose's `createRemoteJWKSet`; the three options are milliseconds, as in jose. |
+| `jwks(url, { cacheMaxAge, cooldownDuration, timeoutDuration })` | A known JWKS URL. Wraps jose's `createRemoteJWKSet`; the three options are milliseconds, as in jose. A request that runs past `timeoutDuration` fails as `timeout`. |
 | `staticKeys(keys)` | Keys you ship with the service, as JWKs. |
 | `cachedKeys(load, { key, ttl, timeout, max })` | A custom loader, with a per-key TTL and shared in-flight loads. |
 
-A key source is any `(context) => Promise<CryptoKey | JWK>`; `context` carries the parsed token, the matched issuer and the verifier's `fetch`.
+A key source is any `(context) => Promise<CryptoKey | JWK>`; `context` carries the parsed token, the matched issuer, the verifier's `fetch` and `timeout`.
 
 ### Introspection
 
@@ -195,6 +195,7 @@ const verifier = createVerifier({
 - The endpoint is `introspection.endpoint`, else the `introspection_endpoint` discovered for a string `issuer`. A function issuer needs an explicit `endpoint`.
 - `authorization` is either client credentials, sent as HTTP Basic, or a function returning the whole `Authorization` header value (for a bearer token of your own). The function receives `{ retry }`: after a `401` it is called again with `retry: true`, so it can mint a fresh token, and the request is repeated once. Client credentials are not retried.
 - `active` other than `true` fails as `token_inactive`; a failed request, a non-2xx answer or a body that is not a JSON object fails as `introspection_failed`. For a non-2xx answer the error carries the HTTP status as `error.status`.
+- Each request, the discovery of the endpoint and the retry after a `401` included, may take the verifier's `timeout` seconds (default 10), its body included. A request that runs out of time is cancelled and fails as `timeout`.
 - The issuer's `audience` and `claims` predicate apply to the introspection response too.
 - `opaque` names the issuer that introspects tokens which are not JWTs at all. Without it, such a token fails as `token_malformed`.
 - A result is cached for the shorter of `exp - now` and `maxCacheTTL` seconds; with neither, it is not cached.
@@ -268,7 +269,7 @@ const verifier = createVerifier({
 | `requiredClaims` | `string[]` | `['exp']` | Claims that must be present. |
 | `claims` | `(claims) => boolean \| Promise<boolean>` | | Your own rules over the verified claims. |
 
-The verifier itself takes `issuers`, `cache` (`ITokenCache` or `false`), `cacheNamespace` (see [Caching](#caching)), `fetch` (defaults to the global `fetch`) and `opaque` (the `id` of the issuer that introspects non-JWT tokens). The constructor throws a `TypeError` for a configuration that cannot work: no issuers, a duplicate `id`, a function issuer verified locally without `keys`, or an `opaque` id that names no issuer.
+The verifier itself takes `issuers`, `cache` (`ITokenCache` or `false`), `cacheNamespace` (see [Caching](#caching)), `fetch` (defaults to the global `fetch`), `opaque` (the `id` of the issuer that introspects non-JWT tokens) and `timeout` (seconds each introspection or discovery request may take, default 10). The constructor throws a `TypeError` for a configuration that cannot work: no issuers, a duplicate `id`, a function issuer verified locally without `keys`, an `opaque` id that names no issuer, or a `timeout` that is not a finite number above 0 and at most 2147483.
 
 ## Errors
 
@@ -285,6 +286,7 @@ Every error `verify` throws is a `VouchlyError` with a `code`. The underlying er
 | `claim_invalid` | `aud`, `iss`, `typ`, `nbf`, a required claim, the algorithm or the `claims` predicate. |
 | `introspection_failed` | The introspection request failed, answered non-2xx (`error.status` holds the status), or did not answer a JSON object. |
 | `binding_mismatch` | The token is certificate-bound and the presented thumbprint does not match. |
+| `timeout` | A request ran out of time: introspection, discovery, a `jwks` fetch or a `cachedKeys` load. The issuer did not answer in time; the token was not judged. |
 
 Use `isVouchlyError(error)` rather than `instanceof`: it checks a `Symbol.for('vouchly.error')` marker, so it still matches when two copies of vouchly are installed.
 
@@ -295,8 +297,8 @@ Use `isVouchlyError(error)` rather than `instanceof`: it checks a `Symbol.for('v
 | `createVerifier(options)`, `Verifier` | function, class | The verifier; `verify(token, options?)` answers `{ claims, issuer, source }`. |
 | `discovery`, `jwks`, `staticKeys`, `cachedKeys` | functions | Key sources, see [Key sources](#key-sources). |
 | `resolveVerificationKey(source, context)` | function | Runs a key source through the key policy; what the verifier uses. |
-| `fetchProviderMetadata(issuer, fetch, options?)` | function | Reads and checks an issuer's OIDC discovery document. |
-| `introspect(token, issuer, fetch)` | function | One RFC 7662 request; applies no claim rules of its own. |
+| `fetchProviderMetadata(issuer, fetch, options?)` | function | Reads and checks an issuer's OIDC discovery document. `options.timeout` in seconds, default 10. |
+| `introspect(token, issuer, fetch, options?)` | function | One RFC 7662 request; applies no claim rules of its own. `options.timeout` in seconds, default 10. |
 | `assertCertificateBinding(claims, thumbprint)` | function | The RFC 8705 check on its own. |
 | `MemoryTokenCache`, `ITokenCache`, `hashToken` | class, interface, function | The default cache, the cache port and the key derivation. |
 | `parseToken`, `isCompactToken` | functions | Strict parsing without verification. |

@@ -509,3 +509,105 @@ describe('introspection retry after 401', () => {
         expect(stub.requests).toHaveLength(1);
     });
 });
+
+describe('src/introspection timeout', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    function stalledFetch(signals: AbortSignal[] = []) : typeof fetch {
+        return (_input, init) => new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+
+            if (!signal) {
+                return;
+            }
+
+            signals.push(signal);
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+    }
+
+    it('should reject a stalled request as timeout, not introspection_failed', async () => {
+        const error = await expectCode(
+            verifier({ fetch: stalledFetch(), requests: [] }, introspectionIssuer(), { timeout: 0.05 }).verify(JWT),
+            VouchlyErrorCode.TIMEOUT,
+        );
+
+        expect((error as Error).cause).toBeInstanceOf(Error);
+        expect(((error as Error).cause as Error).name).toBe('TimeoutError');
+    });
+
+    it('should take the timeout as an option of introspect', async () => {
+        await expectCode(
+            introspect(JWT, introspectionIssuer(), stalledFetch(), { timeout: 0.05 }),
+            VouchlyErrorCode.TIMEOUT,
+        );
+    });
+
+    it('should bound the retry after a 401 on its own', async () => {
+        let calls = 0;
+        const signals : AbortSignal[] = [];
+        const stalled = stalledFetch(signals);
+        const issuer = introspectionIssuer({
+            introspection: {
+                endpoint: ENDPOINT,
+                authorization: () => 'Bearer x',
+            },
+        });
+
+        const fetchFn : typeof fetch = async (input, init) => {
+            calls++;
+
+            if (calls === 1) {
+                await new Promise((resolve) => {
+                    setTimeout(resolve, 30);
+                });
+
+                return new Response(null, { status: 401 });
+            }
+
+            return stalled(input, init);
+        };
+
+        await expectCode(introspect(JWT, issuer, fetchFn, { timeout: 0.05 }), VouchlyErrorCode.TIMEOUT);
+        expect(calls).toBe(2);
+        expect(signals).toHaveLength(1);
+    });
+
+    it('should reject a stalled discovery of the endpoint as timeout', async () => {
+        const issuer = introspectionIssuer({ introspection: { authorization: { clientId: 'client', clientSecret: 'secret' } } });
+
+        await expectCode(
+            introspect(JWT, issuer, stalledFetch(), { timeout: 0.05 }),
+            VouchlyErrorCode.TIMEOUT,
+        );
+    });
+
+    it('should default to 10 seconds', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+        const signals : AbortSignal[] = [];
+        const promise = introspect(JWT, introspectionIssuer(), stalledFetch(signals));
+        const outcome = expectCode(promise, VouchlyErrorCode.TIMEOUT);
+
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(signals).toHaveLength(1);
+        expect(signals[0]!.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(signals[0]!.aborted).toBe(true);
+
+        await outcome;
+    });
+
+    it('should refuse a timeout that is not a positive number of seconds', async () => {
+        const stub = createStub(activeResponse());
+
+        for (const timeout of [0, -1, NaN, Infinity, 2_147_484]) {
+            await expect(introspect(JWT, introspectionIssuer(), stub.fetch, { timeout })).rejects.toThrow(TypeError);
+        }
+
+        expect(stub.requests).toHaveLength(0);
+    });
+});

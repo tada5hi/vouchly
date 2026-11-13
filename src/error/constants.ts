@@ -8,6 +8,7 @@ export enum VouchlyErrorCode {
     CLAIM_INVALID = 'claim_invalid',
     INTROSPECTION_FAILED = 'introspection_failed',
     BINDING_MISMATCH = 'binding_mismatch',
+    TIMEOUT = 'timeout',
 }
 
 export const VOUCHLY_ERROR_MARKER = Symbol.for('vouchly.error');

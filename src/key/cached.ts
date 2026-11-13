@@ -1,4 +1,5 @@
 import type { JWK } from 'jose';
+import { createTimeoutError, createTimeoutSignal } from '../signal';
 import type { CachedKeysOptions, KeySource, KeySourceContext } from './types';
 
 type CachedKeysItem = {
@@ -50,18 +51,18 @@ export function cachedKeys(
             return structuredClone(await pending);
         }
 
-        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timer = createTimeoutSignal(timeout);
         const deadline = new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(() => {
-                reject(new Error('Loading the key timed out.'));
-            }, timeout * 1000);
+            timer.signal.addEventListener('abort', () => {
+                reject(createTimeoutError('Loading the key timed out.', timer.signal.reason));
+            }, { once: true });
         });
 
         // A stalled load must not pin every later lookup of the key: the
-        // flight settles at the deadline, and a load finishing after it is
-        // dropped instead of stored.
+        // flight settles at the deadline, the load's signal aborts, and a
+        // load finishing after it is dropped instead of stored.
         const flight : Promise<JWK> = Promise.race([
-            Promise.resolve().then(() => load(context)),
+            Promise.resolve().then(() => load({ ...context, signal: timer.signal })),
             deadline,
         ])
             .then((jwk) => {
@@ -86,7 +87,7 @@ export function cachedKeys(
                 return jwk;
             })
             .finally(() => {
-                clearTimeout(timer);
+                timer.clear();
 
                 if (flights.get(key) === flight) {
                     flights.delete(key);
