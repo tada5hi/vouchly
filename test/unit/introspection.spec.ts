@@ -545,6 +545,23 @@ describe('src/introspection timeout', () => {
         );
     });
 
+    it('should not wait for the body of a refused answer to be discarded', async () => {
+        const fetchFn : typeof fetch = async () => {
+            const response = new Response('denied', { status: 500 });
+
+            Object.defineProperty(response, 'body', { value: { cancel: () => new Promise<void>(() => {}) } });
+
+            return response;
+        };
+
+        const error = await expectCode(
+            introspect(JWT, introspectionIssuer(), fetchFn),
+            VouchlyErrorCode.INTROSPECTION_FAILED,
+        );
+
+        expect((error as { status?: number }).status).toBe(500);
+    });
+
     it('should bound the retry after a 401 on its own', async () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 

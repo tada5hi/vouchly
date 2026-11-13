@@ -114,7 +114,8 @@ async function send(
         });
 
         if (!response.ok) {
-            await response.body?.cancel().catch(() => undefined);
+            // not awaited: discarding the body must not hold back the answer
+            response.body?.cancel().catch(() => undefined);
 
             return { status: response.status, ok: false };
         }

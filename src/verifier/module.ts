@@ -234,9 +234,16 @@ export class Verifier implements IVerifier {
     }
 
     async verify(token: string, options: VerifyOptions = {}) : Promise<VerifyResult> {
-        const { signal } = options;
+        options.signal?.throwIfAborted();
 
-        signal?.throwIfAborted();
+        // the wait ends with the caller's signal at every stage, also one
+        // that takes no signal (a cache read, a claims predicate), and a
+        // result that settles after the abort is not handed out
+        return abortable(this.run(token, options), options.signal);
+    }
+
+    protected async run(token: string, options: VerifyOptions) : Promise<VerifyResult> {
+        const { signal } = options;
 
         const compact = typeof token === 'string' && isCompactToken(token);
 
