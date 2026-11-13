@@ -162,7 +162,7 @@ const verifier = createVerifier({
 
 | Source | Use it for |
 |--------|------------|
-| `discovery({ cacheMaxAge })` | Default for a string `issuer`. Reads `jwks_uri` from `<issuer>/.well-known/openid-configuration`, which must name the same `issuer`. Metadata is reused for `cacheMaxAge` seconds (default 600); after a failed fetch the issuer is not asked again for 30 seconds, and keys fail fast as `key_unavailable` meanwhile. |
+| `discovery({ cacheMaxAge })` | Default for a string `issuer`. Reads `jwks_uri` from `<issuer>/.well-known/openid-configuration`, which must name the same `issuer`. Metadata is reused for `cacheMaxAge` seconds (default 600); after a failed fetch the issuer is not asked again for 30 seconds, and keys fail fast as `key_unavailable` meanwhile (as `timeout` when the fetch timed out). The verifier's `timeout` bounds the metadata request only; the JWKS request behind it keeps jose's `timeoutDuration` (default 5000 ms). |
 | `jwks(url, { cacheMaxAge, cooldownDuration, timeoutDuration })` | A known JWKS URL. Wraps jose's `createRemoteJWKSet`; the three options are milliseconds, as in jose. A request that runs past `timeoutDuration` fails as `timeout`. |
 | `staticKeys(keys)` | Keys you ship with the service, as JWKs. |
 | `cachedKeys(load, { key, ttl, timeout, max })` | A custom loader, with a per-key TTL and shared in-flight loads. |
@@ -221,7 +221,8 @@ const { claims } = await verifier.verify(token, {
 const { claims } = await verifier.verify(token, { signal: request.signal });
 ```
 
-- `timeout` (verifier option, seconds, default 10) bounds each request on its own: discovery, the introspection request and its retry after a `401` each get the full time. A request that runs out of time is cancelled and fails as `timeout`, so you can answer `503` instead of `401`.
+- `timeout` (verifier option, seconds, default 10) bounds each request on its own: discovery, the introspection request and its retry after a `401` each get the full time, so one verification can take up to three times the `timeout`. A request that runs out of time is cancelled and fails as `timeout`, so you can answer `503` instead of `401`. The JWKS request of `discovery()` is not bounded by it: jose's `timeoutDuration` applies (default 5000 ms).
+- Concurrent verifications share one discovery request. Each waits for at most its own `timeout`; the request runs until the latest deadline of the calls waiting for it. During the 30 seconds after a discovery that timed out, calls fail fast as `timeout` too.
 - `signal` aborts one verification. It rejects with the signal's own `reason`, not a `VouchlyError`, so you recognize your own abort. An already aborted signal rejects before any cache lookup or request, and an aborted verification stores no result.
 - The signal cancels only what belongs to that call alone: its introspection request (combined with the timeout through `AbortSignal.any`). Work shared with other verifications, a `cachedKeys` load, a discovery request or a JWKS refresh, is never cancelled by one caller: the aborted call stops waiting, the work goes on for the others and stays bounded by its own timeout.
 - A custom key source receives the signal as `context.signal`; a `cachedKeys` loader receives its own deadline as `context.signal` instead, since its load is shared.
@@ -280,7 +281,7 @@ const verifier = createVerifier({
 | `requiredClaims` | `string[]` | `['exp']` | Claims that must be present. |
 | `claims` | `(claims) => boolean \| Promise<boolean>` | | Your own rules over the verified claims. |
 
-The verifier itself takes `issuers`, `cache` (`ITokenCache` or `false`), `cacheNamespace` (see [Caching](#caching)), `fetch` (defaults to the global `fetch`), `opaque` (the `id` of the issuer that introspects non-JWT tokens) and `timeout` (seconds each introspection or discovery request may take, default 10). The constructor throws a `TypeError` for a configuration that cannot work: no issuers, a duplicate `id`, a function issuer verified locally without `keys`, an `opaque` id that names no issuer, or a `timeout` that is not a finite number above 0 and at most 2147483.
+The verifier itself takes `issuers`, `cache` (`ITokenCache` or `false`), `cacheNamespace` (see [Caching](#caching)), `fetch` (defaults to the global `fetch`), `opaque` (the `id` of the issuer that introspects non-JWT tokens) and `timeout` (seconds each introspection or discovery request may take, default 10; per request, see [Time limits and cancellation](#time-limits-and-cancellation)). The constructor throws a `TypeError` for a configuration that cannot work: no issuers, a duplicate `id`, a function issuer verified locally without `keys`, an `opaque` id that names no issuer, or a `timeout` that is not a finite number above 0 and at most 2147483.
 
 ## Errors
 
@@ -298,6 +299,12 @@ Every error `verify` throws is a `VouchlyError` with a `code`. The underlying er
 | `introspection_failed` | The introspection request failed, answered non-2xx (`error.status` holds the status), or did not answer a JSON object. |
 | `binding_mismatch` | The token is certificate-bound and the presented thumbprint does not match. |
 | `timeout` | A request ran out of time: introspection, discovery, a `jwks` fetch or a `cachedKeys` load. The issuer did not answer in time; the token was not judged. |
+
+Three failures report `timeout` that earlier releases reported otherwise:
+
+- an introspection request that ran out of time (was `introspection_failed`),
+- a `cachedKeys` load that ran past its `timeout` (was `key_unavailable`),
+- a `jwks()` request that ran past its `timeoutDuration`, jose's `JWKSTimeout` (was `key_unavailable`).
 
 Use `isVouchlyError(error)` rather than `instanceof`: it checks a `Symbol.for('vouchly.error')` marker, so it still matches when two copies of vouchly are installed.
 

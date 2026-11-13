@@ -7,7 +7,9 @@ export type KeySourceContext = {
     issuer: Issuer,
     fetch: typeof fetch,
     /**
-     * Seconds a request of the source may take: the verifier's timeout.
+     * Seconds a request of the source may take: the verifier's timeout. The
+     * discovery source applies it to the metadata request, not to the JWKS
+     * request, which keeps jose's timeoutDuration.
      */
     timeout?: number,
     /**

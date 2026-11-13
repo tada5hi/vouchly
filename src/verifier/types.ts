@@ -26,7 +26,11 @@ export type VerifierOptions = {
     opaque?: string,
     /**
      * Seconds each introspection or discovery request may take, default 10.
-     * Must be a finite number above 0 and at most 2147483.
+     * Must be a finite number above 0 and at most 2147483. The bound is per
+     * request, so a verification that needs discovery, the introspection
+     * request and a retry after a 401 can take up to three times as long.
+     * It does not bound the JWKS request of the discovery key source, which
+     * keeps jose's own timeoutDuration.
      */
     timeout?: number,
 };
