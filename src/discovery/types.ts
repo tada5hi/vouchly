@@ -16,8 +16,9 @@ export type DiscoveryOptions = {
 
 export type FetchProviderMetadataOptions = DiscoveryOptions & {
     /**
-     * Seconds the metadata request may take, default 10. It bounds the one
-     * request shared by concurrent calls, so the call starting it decides.
+     * Seconds this call waits for the metadata request, default 10. Calls
+     * sharing one request each wait for their own timeout; the request runs
+     * until the latest of their deadlines.
      */
     timeout?: number,
     /**

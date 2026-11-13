@@ -1,6 +1,6 @@
 import { VouchlyError, VouchlyErrorCode } from '../error';
 import { TIMEOUT_DEFAULT, TIMEOUT_MAX } from './constants';
-import type { TimeoutSignal } from './types';
+import type { DeadlineSignal, TimeoutSignal } from './types';
 
 /**
  * A timeout in seconds: the default when absent, else a finite number above
@@ -31,6 +31,38 @@ export function createTimeoutSignal(timeout: number) : TimeoutSignal {
     return {
         signal: controller.signal,
         clear: () => clearTimeout(timer),
+    };
+}
+
+/**
+ * A signal aborted with a TimeoutError at `deadline` (a Date.now()
+ * timestamp), which extend() can only move later.
+ */
+export function createDeadlineSignal(deadline: number) : DeadlineSignal {
+    const controller = new AbortController();
+    let at = deadline;
+    let timer : ReturnType<typeof setTimeout> | undefined;
+
+    const schedule = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            controller.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+        }, Math.max(0, at - Date.now()));
+    };
+
+    schedule();
+
+    return {
+        signal: controller.signal,
+        clear: () => clearTimeout(timer),
+        extend: (value) => {
+            if (!(value > at) || controller.signal.aborted) {
+                return;
+            }
+
+            at = value;
+            schedule();
+        },
     };
 }
 
@@ -77,4 +109,34 @@ export function abortable<T>(promise: Promise<T>, signal?: AbortSignal) : Promis
             reject(e);
         });
     });
+}
+
+/**
+ * Waits for shared work for at most `timeout` seconds of this caller's own,
+ * and no longer than its signal: either rejects the wait (TIMEOUT, or the
+ * signal's reason), never the work.
+ */
+export async function waitWithin<T>(
+    promise: Promise<T>,
+    timeout: number,
+    message: string,
+    signal?: AbortSignal,
+) : Promise<T> {
+    const timer = createTimeoutSignal(timeout);
+
+    try {
+        return await abortable(promise, combineSignals(timer.signal, signal));
+    } catch (e) {
+        if (signal?.aborted) {
+            throw signal.reason;
+        }
+
+        if (timer.signal.aborted && e === timer.signal.reason) {
+            throw createTimeoutError(message, e);
+        }
+
+        throw e;
+    } finally {
+        timer.clear();
+    }
 }
