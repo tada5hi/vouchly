@@ -11,8 +11,9 @@ export type KeySourceContext = {
      */
     timeout?: number,
     /**
-     * Aborts when the request of the source ran into its time limit: in a
-     * cachedKeys load, the load's deadline.
+     * The caller's signal of this verification. Work shared between
+     * verifications must not be cancelled by it, only stop waiting; inside a
+     * cachedKeys load it is the load's own deadline instead.
      */
     signal?: AbortSignal,
 };

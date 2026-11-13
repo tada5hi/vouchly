@@ -2,7 +2,13 @@ import type { JWTPayload } from 'jose';
 import { fetchProviderMetadata } from '../discovery';
 import { VouchlyError, VouchlyErrorCode, isVouchlyError } from '../error';
 import type { Issuer } from '../issuer';
-import { createTimeoutError, createTimeoutSignal, resolveTimeout } from '../signal';
+import {
+    abortable,
+    combineSignals,
+    createTimeoutError,
+    createTimeoutSignal,
+    resolveTimeout,
+} from '../signal';
 import type { IntrospectOptions, IntrospectionResponse } from './types';
 
 function fail(message: string, cause?: unknown) : VouchlyError {
@@ -18,6 +24,7 @@ function formEncode(value: string) : string {
 
 type RequestOptions = {
     timeout: number,
+    signal?: AbortSignal,
 };
 
 type Answer = {
@@ -39,7 +46,7 @@ async function resolveEndpoint(issuer: Issuer, fetchFn: typeof globalThis.fetch,
     let endpoint : string | undefined;
 
     try {
-        endpoint = (await fetchProviderMetadata(issuer.issuer, fetchFn, { timeout: options.timeout })).introspection_endpoint;
+        endpoint = (await fetchProviderMetadata(issuer.issuer, fetchFn, { timeout: options.timeout, signal: options.signal })).introspection_endpoint;
     } catch (e) {
         if (isVouchlyError(e) && e.code === VouchlyErrorCode.TIMEOUT) {
             throw e;
@@ -103,7 +110,7 @@ async function send(
             method: 'POST',
             headers,
             body: new URLSearchParams({ token }).toString(),
-            signal: timer.signal,
+            signal: combineSignals(timer.signal, options.signal),
         });
 
         if (!response.ok) {
@@ -118,6 +125,10 @@ async function send(
             body: await response.text(), 
         };
     } catch (e) {
+        if (options.signal?.aborted) {
+            throw options.signal.reason;
+        }
+
         if (timer.signal.aborted) {
             throw createTimeoutError('The introspection request timed out.', e);
         }
@@ -136,12 +147,12 @@ async function request(
 ) : Promise<JWTPayload> {
     const endpoint = await resolveEndpoint(issuer, fetchFn, options);
 
-    let answer = await send(token, endpoint, await resolveAuthorization(issuer, false), fetchFn, options);
+    let answer = await send(token, endpoint, await abortable(resolveAuthorization(issuer, false), options.signal), fetchFn, options);
 
     // A function may hold a token that expired since it was minted; it gets
     // one chance to mint a fresh one. Client credentials would only repeat.
     if (answer.status === 401 && typeof issuer.introspection?.authorization === 'function') {
-        answer = await send(token, endpoint, await resolveAuthorization(issuer, true), fetchFn, options);
+        answer = await send(token, endpoint, await abortable(resolveAuthorization(issuer, true), options.signal), fetchFn, options);
     }
 
     if (!answer.ok) {
@@ -182,10 +193,17 @@ export async function introspect(
     options: IntrospectOptions = {},
 ) : Promise<JWTPayload> {
     const timeout = resolveTimeout(options.timeout, 'introspection timeout');
+    const { signal } = options;
+
+    signal?.throwIfAborted();
 
     try {
-        return await request(token, issuer, fetchFn, { timeout });
+        return await request(token, issuer, fetchFn, { timeout, signal });
     } catch (e) {
+        if (signal?.aborted) {
+            throw signal.reason;
+        }
+
         if (isVouchlyError(e)) {
             throw e;
         }

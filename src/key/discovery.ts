@@ -34,8 +34,13 @@ export function discovery(options: DiscoveryOptions = {}) : KeySource {
             metadata = await fetchProviderMetadata(issuer, context.fetch, {
                 ...options,
                 timeout: context.timeout,
+                signal: context.signal,
             });
         } catch (e) {
+            if (context.signal?.aborted) {
+                throw context.signal.reason;
+            }
+
             if (isVouchlyError(e) && e.code === VouchlyErrorCode.TIMEOUT) {
                 throw e;
             }

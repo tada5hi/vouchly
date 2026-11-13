@@ -1,5 +1,5 @@
 import type { JWK } from 'jose';
-import { createTimeoutError, createTimeoutSignal } from '../signal';
+import { abortable, createTimeoutError, createTimeoutSignal } from '../signal';
 import type { CachedKeysOptions, KeySource, KeySourceContext } from './types';
 
 type CachedKeysItem = {
@@ -33,6 +33,8 @@ export function cachedKeys(
     const flights = new Map<string, Promise<JWK>>();
 
     return async (context) => {
+        context.signal?.throwIfAborted();
+
         const key = options.key(context);
 
         const item = items.get(key);
@@ -47,8 +49,9 @@ export function cachedKeys(
 
         const pending = flights.get(key);
 
+        // The flight is shared, so a caller's signal only stops its own wait.
         if (pending) {
-            return structuredClone(await pending);
+            return structuredClone(await abortable(pending, context.signal));
         }
 
         const timer = createTimeoutSignal(timeout);
@@ -96,6 +99,6 @@ export function cachedKeys(
 
         flights.set(key, flight);
 
-        return structuredClone(await flight);
+        return structuredClone(await abortable(flight, context.signal));
     };
 }

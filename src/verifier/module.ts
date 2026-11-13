@@ -9,7 +9,7 @@ import { introspect } from '../introspection';
 import type { KeySource } from '../key';
 import { discovery, resolveVerificationKey } from '../key';
 import type { ParsedToken } from '../token';
-import { resolveTimeout } from '../signal';
+import { abortable, resolveTimeout } from '../signal';
 import { isCompactToken, parseToken } from '../token';
 import { resolveCertificateBinding } from './binding';
 import type {
@@ -234,6 +234,10 @@ export class Verifier implements IVerifier {
     }
 
     async verify(token: string, options: VerifyOptions = {}) : Promise<VerifyResult> {
+        const { signal } = options;
+
+        signal?.throwIfAborted();
+
         const compact = typeof token === 'string' && isCompactToken(token);
 
         if (!compact && (!this.opaque || typeof token !== 'string' || token.length === 0)) {
@@ -244,6 +248,8 @@ export class Verifier implements IVerifier {
         const key = await hashToken(`${this.cacheNamespace}\0${token}`);
 
         const cached = await this.readCache(key, parsed);
+
+        signal?.throwIfAborted();
 
         if (cached) {
             await resolveCertificateBinding(this.bindingClaims(cached.entry.claims, cached.entry.source, parsed), options);
@@ -265,7 +271,7 @@ export class Verifier implements IVerifier {
             return this.introspect(token, key, record, options, parsed);
         }
 
-        const claims = await this.verifyLocal(parsed!, record);
+        const claims = await this.verifyLocal(parsed!, record, signal);
 
         const entry : TokenCacheEntry = {
             claims,
@@ -280,6 +286,8 @@ export class Verifier implements IVerifier {
         if (typeof parsed!.header.alg === 'string') {
             entry.alg = parsed!.header.alg;
         }
+
+        signal?.throwIfAborted();
 
         await this.writeCache(key, entry, claims.exp);
 
@@ -314,15 +322,16 @@ export class Verifier implements IVerifier {
         return this.records[index]!;
     }
 
-    protected async verifyLocal(token: ParsedToken, record: IssuerRecord) : Promise<JWTPayload> {
+    protected async verifyLocal(token: ParsedToken, record: IssuerRecord, signal?: AbortSignal) : Promise<JWTPayload> {
         const { issuer } = record;
 
-        const key = await resolveVerificationKey(record.keys!, {
+        const key = await abortable(resolveVerificationKey(record.keys!, {
             token,
             issuer,
             fetch: this.fetch,
             timeout: this.timeout,
-        });
+            signal,
+        }), signal);
 
         const algorithms = issuer.algorithms ?? deriveAlgorithms(key);
 
@@ -377,8 +386,9 @@ export class Verifier implements IVerifier {
     protected async verifyIntrospection(
         token: string,
         record: IssuerRecord,
+        signal?: AbortSignal,
     ) : Promise<JWTPayload> {
-        const claims = await introspect(token, record.issuer, this.fetch, { timeout: this.timeout });
+        const claims = await introspect(token, record.issuer, this.fetch, { timeout: this.timeout, signal });
 
         assertAudience(record.issuer, claims);
         await this.assertClaimsPredicate(record.issuer, claims);
@@ -393,7 +403,9 @@ export class Verifier implements IVerifier {
         options: VerifyOptions,
         parsed?: ParsedToken,
     ) : Promise<VerifyResult> {
-        const claims = await this.verifyIntrospection(token, record);
+        const claims = await this.verifyIntrospection(token, record, options.signal);
+
+        options.signal?.throwIfAborted();
 
         await this.writeCache(
             key,

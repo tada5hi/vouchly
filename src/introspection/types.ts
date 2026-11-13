@@ -9,4 +9,8 @@ export type IntrospectOptions = {
      * endpoint, the introspection request and its retry after a 401.
      */
     timeout?: number,
+    /**
+     * Aborts this introspection: the call rejects with the signal's reason.
+     */
+    signal?: AbortSignal,
 };

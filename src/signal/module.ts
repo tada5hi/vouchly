@@ -34,6 +34,47 @@ export function createTimeoutSignal(timeout: number) : TimeoutSignal {
     };
 }
 
+/**
+ * The signal a request is sent with: the timeout, and the caller's signal
+ * when there is one.
+ */
+export function combineSignals(timeout: AbortSignal, signal?: AbortSignal) : AbortSignal {
+    return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 export function createTimeoutError(message: string, cause: unknown) : VouchlyError {
     return new VouchlyError(VouchlyErrorCode.TIMEOUT, message, { cause });
+}
+
+/**
+ * Waits for work the caller does not own: an abort rejects the wait with the
+ * signal's reason, the work itself goes on.
+ */
+export function abortable<T>(promise: Promise<T>, signal?: AbortSignal) : Promise<T> {
+    if (!signal) {
+        return promise;
+    }
+
+    return new Promise<T>((resolve, reject) => {
+        if (signal.aborted) {
+            promise.catch(() => undefined);
+            reject(signal.reason);
+
+            return;
+        }
+
+        const onAbort = () => {
+            reject(signal.reason);
+        };
+
+        signal.addEventListener('abort', onAbort, { once: true });
+
+        promise.then((value) => {
+            signal.removeEventListener('abort', onAbort);
+            resolve(value);
+        }, (e: unknown) => {
+            signal.removeEventListener('abort', onAbort);
+            reject(e);
+        });
+    });
 }

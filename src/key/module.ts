@@ -38,6 +38,10 @@ export async function resolveVerificationKey(source: KeySource, context: KeySour
     try {
         return await resolve(source, context);
     } catch (e) {
+        if (context.signal?.aborted) {
+            throw context.signal.reason;
+        }
+
         if (
             isVouchlyError(e) &&
             (e.code === VouchlyErrorCode.KEY_UNAVAILABLE || e.code === VouchlyErrorCode.TIMEOUT)

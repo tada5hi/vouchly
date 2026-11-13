@@ -167,7 +167,7 @@ const verifier = createVerifier({
 | `staticKeys(keys)` | Keys you ship with the service, as JWKs. |
 | `cachedKeys(load, { key, ttl, timeout, max })` | A custom loader, with a per-key TTL and shared in-flight loads. |
 
-A key source is any `(context) => Promise<CryptoKey | JWK>`; `context` carries the parsed token, the matched issuer, the verifier's `fetch` and `timeout`.
+A key source is any `(context) => Promise<CryptoKey | JWK>`; `context` carries the parsed token, the matched issuer, the verifier's `fetch` and `timeout`, and the caller's `signal` (see [Time limits and cancellation](#time-limits-and-cancellation)).
 
 ### Introspection
 
@@ -214,6 +214,17 @@ const { claims } = await verifier.verify(token, {
 - A function is only called for a bound token, so it costs nothing for the rest.
 - The check runs on every call, also when the result comes from the cache.
 - A JWT verified by introspection is held to its own `cnf` as well as the response's: the token's claims are unverified, so they can only add a requirement. When either carries a thumbprint, the presented one must match every thumbprint present.
+
+### Time limits and cancellation
+
+```ts
+const { claims } = await verifier.verify(token, { signal: request.signal });
+```
+
+- `timeout` (verifier option, seconds, default 10) bounds each request on its own: discovery, the introspection request and its retry after a `401` each get the full time. A request that runs out of time is cancelled and fails as `timeout`, so you can answer `503` instead of `401`.
+- `signal` aborts one verification. It rejects with the signal's own `reason`, not a `VouchlyError`, so you recognize your own abort. An already aborted signal rejects before any cache lookup or request, and an aborted verification stores no result.
+- The signal cancels only what belongs to that call alone: its introspection request (combined with the timeout through `AbortSignal.any`). Work shared with other verifications, a `cachedKeys` load, a discovery request or a JWKS refresh, is never cancelled by one caller: the aborted call stops waiting, the work goes on for the others and stays bounded by its own timeout.
+- A custom key source receives the signal as `context.signal`; a `cachedKeys` loader receives its own deadline as `context.signal` instead, since its load is shared.
 
 ### Caching
 
@@ -294,11 +305,11 @@ Use `isVouchlyError(error)` rather than `instanceof`: it checks a `Symbol.for('v
 
 | Export | Kind | Purpose |
 |--------|------|---------|
-| `createVerifier(options)`, `Verifier` | function, class | The verifier; `verify(token, options?)` answers `{ claims, issuer, source }`. |
+| `createVerifier(options)`, `Verifier` | function, class | The verifier; `verify(token, { certificateThumbprint?, signal? })` answers `{ claims, issuer, source }`. |
 | `discovery`, `jwks`, `staticKeys`, `cachedKeys` | functions | Key sources, see [Key sources](#key-sources). |
 | `resolveVerificationKey(source, context)` | function | Runs a key source through the key policy; what the verifier uses. |
-| `fetchProviderMetadata(issuer, fetch, options?)` | function | Reads and checks an issuer's OIDC discovery document. `options.timeout` in seconds, default 10. |
-| `introspect(token, issuer, fetch, options?)` | function | One RFC 7662 request; applies no claim rules of its own. `options.timeout` in seconds, default 10. |
+| `fetchProviderMetadata(issuer, fetch, options?)` | function | Reads and checks an issuer's OIDC discovery document. `options.timeout` in seconds, default 10; `options.signal` stops the wait, not the shared request. |
+| `introspect(token, issuer, fetch, options?)` | function | One RFC 7662 request; applies no claim rules of its own. `options.timeout` in seconds, default 10, and `options.signal`. |
 | `assertCertificateBinding(claims, thumbprint)` | function | The RFC 8705 check on its own. |
 | `MemoryTokenCache`, `ITokenCache`, `hashToken` | class, interface, function | The default cache, the cache port and the key derivation. |
 | `parseToken`, `isCompactToken` | functions | Strict parsing without verification. |

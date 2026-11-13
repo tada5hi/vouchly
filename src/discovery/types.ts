@@ -20,4 +20,9 @@ export type FetchProviderMetadataOptions = DiscoveryOptions & {
      * request shared by concurrent calls, so the call starting it decides.
      */
     timeout?: number,
+    /**
+     * Stops this call waiting: it rejects with the signal's reason, while the
+     * shared request goes on for the other callers.
+     */
+    signal?: AbortSignal,
 };

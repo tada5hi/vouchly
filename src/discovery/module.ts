@@ -1,4 +1,9 @@
-import { createTimeoutError, createTimeoutSignal, resolveTimeout } from '../signal';
+import {
+    abortable,
+    createTimeoutError,
+    createTimeoutSignal,
+    resolveTimeout,
+} from '../signal';
 import type { FetchProviderMetadataOptions, ProviderMetadata } from './types';
 
 const CACHE_MAX_AGE = 600;
@@ -108,6 +113,8 @@ export async function fetchProviderMetadata(
     const cacheMaxAge = options.cacheMaxAge ?? CACHE_MAX_AGE;
     const timeout = resolveTimeout(options.timeout, 'discovery timeout');
 
+    options.signal?.throwIfAborted();
+
     const cached = scope(items, fetchFn);
     const item = cached.get(issuer);
 
@@ -147,5 +154,5 @@ export async function fetchProviderMetadata(
         pending.set(issuer, flight);
     }
 
-    return structuredClone(await flight);
+    return structuredClone(await abortable(flight, options.signal));
 }

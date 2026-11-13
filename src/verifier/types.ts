@@ -37,6 +37,12 @@ export type VerifyOptions = {
      * RFC 8705 bound tokens. A provider is only invoked for a bound token.
      */
     certificateThumbprint?: string | (() => string | undefined | Promise<string | undefined>),
+    /**
+     * Aborts this verification: it rejects with the signal's reason, cancels
+     * its introspection request and stores no result. A key load or discovery
+     * shared with other verifications is not cancelled, only no longer awaited.
+     */
+    signal?: AbortSignal,
 };
 
 export type VerifyResult = {
