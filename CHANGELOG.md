@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/tada5hi/vouchly/compare/v0.1.2...v0.1.3) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** bump the minorandpatch group across 1 directory with 2 updates ([#21](https://github.com/tada5hi/vouchly/issues/21)) ([99669eb](https://github.com/tada5hi/vouchly/commit/99669eb90ce3b5484791cb5ca77a26895a078069))
+
 ## [0.1.2](https://github.com/tada5hi/vouchly/compare/v0.1.1...v0.1.2) (2026-11-13)
 
 
